@@ -144,12 +144,29 @@ X-CSRF-Token: {token}
 
 **파일**: `src/endpoints/chats.js`
 
+**구현 방식**: 
+- **코드 재사용**: 클라이언트의 메시지 준비 로직(`public/scripts/openai.js`)을 서버로 이동
+- **기존 API 활용**: 서버에 이미 있는 API들을 활용:
+  - `/api/vector` - 벡터 검색 (벡터 메모리, Data Bank용)
+  - `/api/worldinfo` - 월드 인포
+  - `/api/chats/get` - 채팅 히스토리
+  - `/api/characters/get` - 캐릭터 데이터
+  - `/api/settings/get` - 사용자 설정
+- **로직 이동**: 클라이언트의 `preparePromptsForChatCompletion`, `prepareOpenAIMessages` 함수를 서버로 포팅
+
 **주요 기능**:
 - 캐릭터 데이터 로드
 - 채팅 히스토리 로드 (chat_id가 있는 경우)
 - 시스템 프롬프트 조합
-- 월드 인포 적용
-- 확장 프롬프트 적용
+- 월드 인포 적용 (worldInfoBefore, worldInfoAfter)
+- 확장 프롬프트 적용:
+  - Summary (1_memory) - 서버에서 Summary API 호출 필요
+  - Authors Note (2_floating_prompt) - 설정에서 로드
+  - 벡터 메모리 (3_vectors) - `/api/vector` 활용
+  - Data Bank 벡터 (4_vectors_data_bank) - `/api/vector` 활용
+  - Smart Context/ChromaDB (chromadb) - 서버 API 확인 필요
+  - Persona Description - 설정에서 로드
+  - 기타 확장 프롬프트들
 - 토큰 예산 관리
 - 메시지 배열 생성
 
@@ -157,6 +174,8 @@ X-CSRF-Token: {token}
 - `src/prompt-converters.js` (프롬프트 변환 로직 재사용)
 - `src/endpoints/characters.js` (캐릭터 데이터)
 - `src/endpoints/settings.js` (사용자 설정)
+- `src/endpoints/vectors.js` (벡터 검색)
+- `src/endpoints/worldinfo.js` (월드 인포)
 
 ### 3. 기존 API 활용
 
@@ -320,18 +339,26 @@ GET /api/chats/recent
 #### Week 1: 메시지 준비 API 구현
 
 **Day 1-2: API 설계 및 기본 구조**
-- [ ] 엔드포인트 라우터 생성
-- [ ] 요청/응답 스키마 정의
-- [ ] 에러 핸들링 구조 설계
+- [x] 엔드포인트 라우터 생성
+- [x] 요청/응답 스키마 정의
+- [x] 에러 핸들링 구조 설계
 
 **Day 3-4: 핵심 로직 구현**
-- [ ] 캐릭터 데이터 로드
-- [ ] 채팅 히스토리 로드
-- [ ] 시스템 프롬프트 조합
-- [ ] 월드 인포 적용
+- [x] 캐릭터 데이터 로드
+- [x] 채팅 히스토리 로드
+- [x] 시스템 프롬프트 조합 (기본 구현 완료)
+- [x] 월드 인포 적용 (worldInfoBefore, worldInfoAfter) - 기본 로드 완료, 채팅 스캔 로직은 TODO
+- [ ] 확장 프롬프트 적용:
+  - [ ] Summary (1_memory)
+  - [ ] Authors Note (2_floating_prompt)
+  - [ ] 벡터 메모리 (3_vectors)
+  - [ ] Data Bank 벡터 (4_vectors_data_bank)
+  - [ ] Smart Context/ChromaDB (chromadb)
+  - [ ] Persona Description
+  - [ ] 기타 확장 프롬프트들
 
 **Day 5: 통합 및 테스트**
-- [ ] 기존 프론트엔드와 통합 테스트
+- [x] 기존 프론트엔드와 통합 테스트 (브라우저 콘솔 테스트 완료)
 - [ ] API 문서 작성
 - [ ] 단위 테스트 작성
 

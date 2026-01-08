@@ -21,6 +21,8 @@ import {
     tryDeleteFile,
     readFirstLine,
 } from '../util.js';
+import { parse } from '../character-card-parser.js';
+import { readWorldInfoFile } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1016,5 +1018,219 @@ router.post('/recent', async function (request, response) {
     } catch (error) {
         console.error(error);
         return response.sendStatus(500);
+    }
+});
+
+/**
+ * Prepare messages for chat completion API
+ * This endpoint takes a simple user message and prepares a complete message array
+ * with all system prompts, world info, extension prompts, etc.
+ */
+router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (request, response) {
+    try {
+        const { chat_id, character_id, user_message, type = 'chat', regenerate = false, swipe_index = -1 } = request.body;
+
+        // Validate required fields
+        if (!character_id) {
+            return response.status(400).json({
+                success: false,
+                error: 'character_id is required',
+                code: 'MISSING_CHARACTER_ID'
+            });
+        }
+
+        if (!user_message) {
+            return response.status(400).json({
+                success: false,
+                error: 'user_message is required',
+                code: 'MISSING_USER_MESSAGE'
+            });
+        }
+
+        // Load character data
+        const characterFileName = character_id.endsWith('.png') ? character_id : `${character_id}.png`;
+        const characterFilePath = path.join(request.user.directories.characters, characterFileName);
+        
+        if (!fs.existsSync(characterFilePath)) {
+            return response.status(404).json({
+                success: false,
+                error: 'Character not found',
+                code: 'CHARACTER_NOT_FOUND'
+            });
+        }
+
+        const characterJsonData = await parse(characterFilePath, 'png');
+        if (!characterJsonData) {
+            return response.status(500).json({
+                success: false,
+                error: 'Failed to parse character file',
+                code: 'CHARACTER_PARSE_ERROR'
+            });
+        }
+
+        const characterData = tryParse(characterJsonData);
+        if (!characterData || !characterData.data) {
+            return response.status(500).json({
+                success: false,
+                error: 'Invalid character data format',
+                code: 'INVALID_CHARACTER_FORMAT'
+            });
+        }
+
+        // Extract character fields
+        const charDescription = characterData.data.description || '';
+        const charPersonality = characterData.data.personality || '';
+        const scenario = characterData.data.scenario || '';
+        const name2 = characterData.data.name || '';
+        const worldInfoName = characterData.data.extensions?.world || characterData.data.world || '';
+
+        // Load world info if character has one
+        let worldInfoBefore = '';
+        let worldInfoAfter = '';
+        if (worldInfoName) {
+            try {
+                const worldInfo = readWorldInfoFile(request.user.directories, worldInfoName, true);
+                if (worldInfo && worldInfo.entries) {
+                    // Simple formatting: combine all entries
+                    // TODO: Implement proper world info scanning based on chat history
+                    const entries = Object.values(worldInfo.entries || {});
+                    const worldInfoText = entries
+                        .filter(entry => entry && entry.content)
+                        .map(entry => {
+                            const keys = entry.keys ? entry.keys.join(', ') : '';
+                            return keys ? `${keys}: ${entry.content}` : entry.content;
+                        })
+                        .join('\n\n');
+                    
+                    // For now, put all world info in worldInfoBefore
+                    // TODO: Implement proper before/after positioning based on entry position
+                    worldInfoBefore = worldInfoText;
+                }
+            } catch (error) {
+                console.warn('[prepare-messages] Failed to load world info:', error);
+            }
+        }
+
+        // Load chat history if chat_id is provided
+        let chatHistory = [];
+        if (chat_id) {
+            const characterDirName = characterFileName.replace('.png', '');
+            const chatDirectory = path.join(request.user.directories.chats, characterDirName);
+            const chatFileName = `${chat_id}.jsonl`;
+            const chatFilePath = path.join(chatDirectory, sanitize(chatFileName));
+            
+            if (fs.existsSync(chatFilePath)) {
+                chatHistory = getChatData(chatFilePath);
+            }
+        }
+
+        // Load user settings to get name1
+        let name1 = 'You';
+        try {
+            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            if (fs.existsSync(pathToSettings)) {
+                const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
+                const settings = tryParse(settingsContent);
+                if (settings && settings.name1) {
+                    name1 = settings.name1;
+                }
+            }
+        } catch (error) {
+            console.warn('[prepare-messages] Failed to load user settings:', error);
+        }
+
+        // Prepare basic message array
+        const messages = [];
+
+        // Add world info before (if exists)
+        if (worldInfoBefore) {
+            messages.push({
+                role: 'system',
+                content: worldInfoBefore
+            });
+        }
+
+        // Add system prompts (basic version - will be extended later)
+        if (charDescription) {
+            messages.push({
+                role: 'system',
+                content: charDescription
+            });
+        }
+
+        if (charPersonality) {
+            messages.push({
+                role: 'system',
+                content: charPersonality
+            });
+        }
+
+        if (scenario) {
+            messages.push({
+                role: 'system',
+                content: scenario
+            });
+        }
+
+        // Add chat history (convert from chat format to message format)
+        // Chat format: { name, mes, is_user, ... }
+        // Message format: { role: 'user' | 'assistant', content: string }
+        for (const chatItem of chatHistory) {
+            if (chatItem.mes && chatItem.mes.trim()) {
+                if (chatItem.is_user || chatItem.name === name1) {
+                    messages.push({
+                        role: 'user',
+                        content: chatItem.mes
+                    });
+                } else if (chatItem.name === name2 || chatItem.character_name === name2) {
+                    messages.push({
+                        role: 'assistant',
+                        content: chatItem.mes
+                    });
+                }
+            }
+        }
+
+        // Add current user message
+        messages.push({
+            role: 'user',
+            content: user_message
+        });
+
+        // Add world info after (if exists)
+        if (worldInfoAfter) {
+            messages.push({
+                role: 'system',
+                content: worldInfoAfter
+            });
+        }
+
+        // TODO: Implement proper world info scanning based on chat history (checkWorldInfo equivalent)
+        // TODO: Apply extension prompts (vectors, summary, etc.)
+        // TODO: Calculate token budget
+        // TODO: Apply prompt formatting (scenario_format, personality_format, etc.)
+
+        return response.json({
+            success: true,
+            messages: messages,
+            generate_data: {
+                messages: messages,
+                stream: true
+            },
+            metadata: {
+                character_id: character_id,
+                character_name: name2,
+                user_name: name1,
+                chat_id: chat_id || null,
+                token_count: 0 // TODO: Calculate actual token count
+            }
+        });
+    } catch (error) {
+        console.error('[prepare-messages] Error:', error);
+        return response.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error',
+            code: 'INTERNAL_ERROR'
+        });
     }
 });
