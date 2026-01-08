@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, ScrollView, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -36,8 +37,9 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ThemedView style={styles.container}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         <ThemedView style={styles.section}>
           <ThemedText type="title" style={styles.title}>설정</ThemedText>
           
@@ -74,12 +76,16 @@ export default function ProfileScreen() {
             </ThemedText>
           </ThemedView>
         </ThemedView>
-      </ScrollView>
-    </ThemedView>
+        </ScrollView>
+      </ThemedView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
@@ -102,12 +103,13 @@ export default function ChatScreen() {
   };
 
   return (
-    <ThemedView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-      >
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ThemedView style={styles.container}>
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
         {/* 메시지 리스트 */}
         <View style={styles.listContainer}>
           <FlashList
@@ -152,12 +154,16 @@ export default function ChatScreen() {
             disabled={inputText.trim() === '' || isSending || !selectedCharacter}
           />
         </View>
-      </KeyboardAvoidingView>
-    </ThemedView>
+        </KeyboardAvoidingView>
+      </ThemedView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },

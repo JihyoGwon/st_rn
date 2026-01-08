@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { StyleSheet, ActivityIndicator, View, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FlashList } from '@shopify/flash-list';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -44,47 +45,54 @@ export default function HomeScreen() {
 
   if (isLoading && characters.length === 0) {
     return (
-      <ThemedView style={styles.centerContainer}>
-        <ActivityIndicator size="large" />
-        <ThemedText style={styles.loadingText}>캐릭터를 불러오는 중...</ThemedText>
-      </ThemedView>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ThemedView style={styles.centerContainer}>
+          <ActivityIndicator size="large" />
+          <ThemedText style={styles.loadingText}>캐릭터를 불러오는 중...</ThemedText>
+        </ThemedView>
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <ThemedView style={styles.centerContainer}>
-        <ThemedText type="title" style={styles.errorText}>연결 오류</ThemedText>
-        <ThemedText style={styles.errorMessage}>{error}</ThemedText>
-        <Button
-          title="서버 설정으로 이동"
-          onPress={() => router.push('/profile')}
-          style={styles.settingsButton}
-        />
-        <Button
-          title="다시 시도"
-          onPress={handleRefresh}
-          style={styles.retryButton}
-        />
-      </ThemedView>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ThemedView style={styles.centerContainer}>
+          <ThemedText type="title" style={styles.errorText}>연결 오류</ThemedText>
+          <ThemedText style={styles.errorMessage}>{error}</ThemedText>
+          <Button
+            title="서버 설정으로 이동"
+            onPress={() => router.push('/profile')}
+            style={styles.settingsButton}
+          />
+          <Button
+            title="다시 시도"
+            onPress={handleRefresh}
+            style={styles.retryButton}
+          />
+        </ThemedView>
+      </SafeAreaView>
     );
   }
 
   if (displayCharacters.length === 0) {
     return (
-      <ThemedView style={styles.centerContainer}>
-        <ThemedText type="title">캐릭터가 없습니다</ThemedText>
-        <ThemedText style={styles.emptyText}>
-          {settings.mode === 'single' 
-            ? '기본 캐릭터가 설정되지 않았습니다'
-            : '웹에서 캐릭터를 추가해주세요'}
-        </ThemedText>
-      </ThemedView>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ThemedView style={styles.centerContainer}>
+          <ThemedText type="title">캐릭터가 없습니다</ThemedText>
+          <ThemedText style={styles.emptyText}>
+            {settings.mode === 'single' 
+              ? '기본 캐릭터가 설정되지 않았습니다'
+              : '웹에서 캐릭터를 추가해주세요'}
+          </ThemedText>
+        </ThemedView>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ThemedView style={styles.container}>
       <ThemedView style={styles.header}>
         <ThemedText type="title">캐릭터 선택</ThemedText>
         <ThemedText style={styles.subtitle}>
@@ -108,11 +116,15 @@ export default function HomeScreen() {
           <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />
         }
       />
-    </ThemedView>
+      </ThemedView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
