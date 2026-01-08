@@ -2,6 +2,22 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
+ * 서버 설정 타입 (SillyTavern 서버 설정)
+ */
+export interface ServerSettings {
+  chat_completion_source?: string; // 'openai', 'vertexai' 등
+  vertexai_auth_mode?: string; // 'express' 또는 'full'
+  vertexai_region?: string; // 'us-central1' 등
+  vertexai_model?: string; // 모델 이름
+  openai_model?: string;
+  claude_model?: string;
+  google_model?: string;
+  temp_openai?: number;
+  openai_max_tokens?: number;
+  [key: string]: any; // 기타 설정들
+}
+
+/**
  * 앱 설정 타입
  */
 export interface AppSettings {
@@ -11,6 +27,7 @@ export interface AppSettings {
   showCharacterList: boolean;
   defaultChatId: string | null;
   serverUrl: string; // 서버 URL
+  serverSettings?: ServerSettings; // 서버 설정 (SillyTavern)
 }
 
 /**
@@ -21,6 +38,7 @@ interface AppSettingsStore {
   setMode: (mode: 'multi' | 'single') => void;
   setSelectedCharacterId: (id: string | null) => void;
   setServerUrl: (url: string) => void;
+  setServerSettings: (serverSettings: ServerSettings) => void;
   syncFromServer: (serverSettings: Partial<AppSettings>) => void;
   loadFromStorage: () => Promise<void>;
   saveToStorage: () => Promise<void>;
@@ -63,6 +81,16 @@ export const useAppSettingsStore = create<AppSettingsStore>((set, get) => ({
   setServerUrl: (url) => {
     set((state) => ({
       settings: { ...state.settings, serverUrl: url },
+    }));
+    get().saveToStorage();
+  },
+
+  /**
+   * 서버 설정 설정 (SillyTavern 서버 설정)
+   */
+  setServerSettings: (serverSettings) => {
+    set((state) => ({
+      settings: { ...state.settings, serverSettings },
     }));
     get().saveToStorage();
   },

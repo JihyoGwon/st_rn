@@ -45,6 +45,15 @@ class ApiClient {
   private csrfToken: string | null = null;
   private lastSettingsCheck: number = 0;
   private settingsCheckInterval = 5000; // 5초마다 설정 확인
+  
+  /**
+   * 설정 동기화 (공개 메서드 - 외부에서 호출 가능)
+   */
+  async syncSettings(): Promise<void> {
+    // 마지막 확인 시간 초기화하여 강제로 동기화
+    this.lastSettingsCheck = 0;
+    await this.checkAndSyncSettings();
+  }
 
   /**
    * CSRF 토큰 가져오기
@@ -136,10 +145,33 @@ class ApiClient {
       const data = await response.json();
       const settings = JSON.parse(data.settings || '{}');
       
+      // oai_settings에서 채팅 완성 관련 설정 가져오기
+      const oaiSettings = settings.oai_settings || {};
+      
+      // 디버깅: oai_settings 확인
+      if (__DEV__) {
+        console.log('[API] oai_settings 키들:', Object.keys(oaiSettings).slice(0, 30));
+        console.log('[API] oai_settings에서 찾은 설정:', {
+          chat_completion_source: oaiSettings.chat_completion_source,
+          vertexai_auth_mode: oaiSettings.vertexai_auth_mode,
+          vertexai_model: oaiSettings.vertexai_model,
+          vertexai_region: oaiSettings.vertexai_region,
+        });
+      }
+      
       // 앱 설정 동기화
       if (settings.mobile_app) {
         useAppSettingsStore.getState().syncFromServer(settings.mobile_app);
       }
+      
+      // 서버 설정 저장 (채팅 생성에 사용) - oai_settings 포함
+      // oai_settings의 설정들을 최상위 레벨로 병합하여 저장
+      const serverSettings = {
+        ...settings,
+        ...oaiSettings, // oai_settings의 설정들을 최상위로 병합
+      };
+      
+      useAppSettingsStore.getState().setServerSettings(serverSettings);
     } catch (error) {
       // 네트워크 에러는 조용히 무시 (앱은 계속 동작)
       // 개발 중에만 콘솔에 출력
@@ -215,6 +247,109 @@ class ApiClient {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     });
+  }
+
+  /**
+   * 채팅 히스토리 가져오기
+   */
+  async getChatHistory(avatarUrl: string, fileName: string): Promise<any[]> {
+    return this.post<any[]>('/api/chats/get', {
+      avatar_url: avatarUrl,
+      file_name: fileName,
+    });
+  }
+
+  /**
+   * 채팅 저장
+   */
+  async saveChat(
+    avatarUrl: string,
+    fileName: string,
+    chat: any[],
+    chatMetadata?: any
+  ): Promise<{ ok: boolean }> {
+    return this.post<{ ok: boolean }>('/api/chats/save', {
+      avatar_url: avatarUrl,
+      file_name: fileName,
+      chat: chat,
+      chat_metadata: chatMetadata,
+    });
+  }
+
+  /**
+   * 메시지 준비 (채팅 전송 전)
+   */
+  async prepareMessages(params: {
+    chat_id?: string;
+    character_id: string;
+    user_message: string;
+    type?: string;
+    regenerate?: boolean;
+    swipe_index?: number;
+  }): Promise<any> {
+    return this.post('/api/chats/prepare-messages', params);
+  }
+
+  /**
+   * 채팅 생성 (스트리밍 또는 비스트리밍)
+   */
+  async generateChatCompletion(params: {
+    messages: any[];
+    model?: string;
+    temperature?: number;
+    max_tokens?: number;
+    stream?: boolean;
+    chat_completion_source?: string;
+  }): Promise<any> {
+    const baseUrl = getBaseUrl();
+    const token = await this.getCsrfToken();
+    const url = `${baseUrl}/api/backends/chat-completions/generate`;
+
+    // 기본값 설정
+    const requestParams = {
+      stream: false,
+      chat_completion_source: 'openai',
+      ...params,
+    };
+
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': token,
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestParams),
+      },
+      60000 // 생성은 60초 타임아웃
+    );
+
+    if (!response.ok) {
+      let errorText = '';
+      try {
+        const errorData = await response.json();
+        errorText = errorData.error?.message || JSON.stringify(errorData);
+      } catch {
+        errorText = await response.text();
+      }
+      
+      // API 키가 없는 경우 더 명확한 메시지
+      if (response.status === 400 && errorText.includes('key') || errorText.includes('Key')) {
+        throw new Error('API 키가 설정되지 않았습니다. SillyTavern 웹에서 API 키를 설정해주세요.');
+      }
+      
+      throw new Error(`채팅 생성 실패: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    // 스트리밍이 아닌 경우 JSON 파싱
+    if (!requestParams.stream) {
+      return response.json();
+    }
+
+    // 스트리밍인 경우 Response 반환 (나중에 구현)
+    return response;
   }
 }
 
