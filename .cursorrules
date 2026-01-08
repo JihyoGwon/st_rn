@@ -1,0 +1,49 @@
+# 프로젝트 컨텍스트
+- 프레임워크: React Native (Expo SDK 54 사용)
+- 라우팅: Expo Router (v6)
+- 언어: TypeScript
+- 상태 관리: Zustand (v5)
+- 스타일링: 커스텀 테마 컴포넌트 (`ThemedText`, `ThemedView`) & `StyleSheet`
+
+# 기본 규칙
+- **모든 문서와 주석, 커밋 메시지는 한글로 작성한다.**
+
+# 코드 스타일 규칙
+
+## 일반 (General)
+- 함수형 컴포넌트와 화살표 함수(Arrow Function)를 사용한다.
+- TypeScript Strict 모드를 준수한다.
+- `let` 대신 `const`를 우선적으로 사용한다.
+- 비동기 작업에는 `async/await`를 사용한다.
+
+## 컴포넌트 & 스타일링 (Components & Styling)
+- **중요**: 텍스트와 컨테이너에는 반드시 `@/components/` 경로의 `ThemedText`와 `ThemedView`를 사용하여 다크 모드를 지원해야 한다.
+- 스타일링에 하드코딩된 색상 코드(예: hex code)를 직접 사용하지 않는다. 테마 색상이나 `useThemeColor` 훅을 사용한다.
+- 스타일 정의 시 `StyleSheet.create`를 사용한다.
+- 복잡한 스타일에는 인라인 스타일(inline styles) 사용을 지양한다.
+
+## 네비게이션 (Expo Router)
+- `app/` 디렉토리 내의 파일 기반 라우팅을 따른다.
+- 네비게이션 이동 시 `expo-router`의 `Link` 컴포넌트를 사용한다.
+- 관련된 라우트들(예: 탭 화면)은 `_layout.tsx`를 사용하여 그룹화한다.
+
+## 상태 관리 (Zustand)
+- 스토어 파일은 별도의 `store/` 디렉토리에 정의하거나, 간단한 경우 `hooks/` 내부에 둔다.
+- 스토어는 각 기능에 집중하여 모듈화된 상태로 유지한다.
+
+## AI 상담사 앱 개발 특이사항
+- 채팅 리스트 성능을 위해 `FlatList`나 `ScrollView` 대신 `@shopify/flash-list` 사용을 고려한다.
+
+# 디렉토리 구조
+- `app/`: 애플리케이션 화면 및 라우팅 설정.
+- `components/`: 재사용 가능한 UI 컴포넌트.
+  - `ui/`: 기본 UI 컴포넌트 (버튼, 입력창 등).
+- `hooks/`: 커스텀 React 훅.
+- `store/`: 전역 상태 관리 (Zustand 스토어).
+- `constants/`: 앱 전반의 상수 (테마 색상, 설정 값 등).
+- `assets/`: 이미지, 폰트 등 정적 자산.
+
+# 베스트 프랙티스
+- 로딩(Loading) 및 에러(Error) 상태를 명시적으로 처리한다.
+- 모든 텍스트는 `ThemedText`로 감싸야 한다.
+- 새로운 라이브러리 도입 시 iOS와 Android 플랫폼 호환성을 반드시 확인한다.

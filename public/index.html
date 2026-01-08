@@ -5045,6 +5045,31 @@
 
                         </div>
 
+                        <div name="MobileAppSettings">
+                            <h4>
+                                <span data-i18n="Mobile App Settings">Mobile App Settings</span>
+                                <a href="https://docs.sillytavern.app/usage/mobile-app/" class="notes-link" target="_blank">
+                                    <span class="fa-solid fa-circle-question note-link-span"></span>
+                                </a>
+                            </h4>
+                            <label class="checkbox_label" for="mobile_app_single_mode" title="Enable single character mode. When enabled, the app will always use the selected character." data-i18n="[title]Enable single character mode. When enabled, the app will always use the selected character.">
+                                <input id="mobile_app_single_mode" type="checkbox" />
+                                <small data-i18n="Single Character Mode">Single Character Mode</small>
+                            </label>
+                            <div class="flex-container alignitemscenter" id="mobile_app_character_select_container" style="display: none;">
+                                <label for="mobile_app_default_character"><small data-i18n="Default Character">Default Character</small></label>
+                                <select id="mobile_app_default_character" class="widthNatural flex1 margin0">
+                                    <option value="" data-i18n="None">None</option>
+                                </select>
+                            </div>
+                            <div class="flex-container alignitemscenter">
+                                <label for="mobile_app_auto_connect"><small data-i18n="Auto Connect">Auto Connect</small></label>
+                                <label class="checkbox_label" for="mobile_app_auto_connect" title="Automatically connect to the selected character when the app starts." data-i18n="[title]Automatically connect to the selected character when the app starts.">
+                                    <input id="mobile_app_auto_connect" type="checkbox" />
+                                </label>
+                            </div>
+                        </div>
+
                         <div name="MiscellaneousToggles">
                             <h4><span data-i18n="Miscellaneous">Miscellaneous</span></h4>
                             <div class="flex-container flexGap2">

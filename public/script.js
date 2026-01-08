@@ -729,6 +729,8 @@ async function firstLoadInit() {
     initAccessibility();
     addDebugFunctions();
     doDailyExtensionUpdatesCheck();
+    // Initialize mobile app settings handlers
+    setupMobileAppSettingsHandlers();
     await hideLoader();
     await fixViewport();
     await eventSource.emit(event_types.APP_READY);
@@ -1009,6 +1011,12 @@ export async function printCharacters(fullRefresh = false) {
             localizePagination($('#rm_print_characters_pagination'));
 
             eventSource.emit(event_types.CHARACTER_PAGE_LOADED);
+            
+            // Update mobile app character select if single mode is enabled
+            if ($('#mobile_app_single_mode').prop('checked')) {
+                const currentSelected = $('#mobile_app_default_character').val();
+                populateMobileAppCharacterSelect(currentSelected);
+            }
         },
         afterSizeSelectorChange: function (e, size) {
             accountStorage.setItem(storageKey, e.target.value);
@@ -1270,6 +1278,12 @@ export async function getCharacters() {
 
         await getGroups();
         await printCharacters(true);
+        // Load mobile app settings after characters are loaded
+        if (window._pendingMobileAppSettings) {
+            const tempSettings = { mobile_app: window._pendingMobileAppSettings };
+            loadMobileAppSettings(tempSettings);
+            window._pendingMobileAppSettings = null;
+        }
     } else {
         console.error('Failed to fetch characters:', response.statusText);
         const errorData = await response.json();
@@ -7681,6 +7695,8 @@ export async function getSettings() {
         // Load proxy presets
         loadProxyPresets(settings);
 
+        // Load mobile app settings will be called after characters are loaded
+
         // Allow subscribers to mutate settings
         await eventSource.emit(event_types.SETTINGS_LOADED_AFTER, settings);
 
@@ -7724,6 +7740,11 @@ export async function getSettings() {
             await eventSource.emit(event_types.EXTENSION_SETTINGS_LOADED);
         }
 
+        // Store mobile app settings for loading after characters are loaded
+        if (settings.mobile_app) {
+            window._pendingMobileAppSettings = settings.mobile_app;
+        }
+
         firstRun = !!settings.firstRun;
 
         if (firstRun) {
@@ -7736,6 +7757,105 @@ export async function getSettings() {
     settingsReady = true;
     await eventSource.emit(event_types.SETTINGS_LOADED);
 }
+
+//MARK: getMobileAppSettings()
+function getMobileAppSettings() {
+    const mode = $('#mobile_app_single_mode').prop('checked') ? 'single' : 'multi';
+    const selectedCharacterId = $('#mobile_app_default_character').val() || null;
+    const autoConnect = $('#mobile_app_auto_connect').prop('checked') || false;
+    
+    return {
+        mode: mode,
+        selectedCharacterId: selectedCharacterId,
+        autoConnect: autoConnect,
+        showCharacterList: mode === 'multi',
+        defaultChatId: null,
+    };
+}
+
+//MARK: loadMobileAppSettings()
+function loadMobileAppSettings(settings) {
+    const mobileAppSettings = settings.mobile_app || {
+        mode: 'multi',
+        selectedCharacterId: null,
+        autoConnect: false,
+        showCharacterList: true,
+        defaultChatId: null,
+    };
+
+    // Set single mode checkbox
+    $('#mobile_app_single_mode').prop('checked', mobileAppSettings.mode === 'single');
+    
+    // Show/hide character select based on mode
+    if (mobileAppSettings.mode === 'single') {
+        $('#mobile_app_character_select_container').show();
+        populateMobileAppCharacterSelect(mobileAppSettings.selectedCharacterId);
+    } else {
+        $('#mobile_app_character_select_container').hide();
+    }
+    
+    // Set auto connect checkbox
+    $('#mobile_app_auto_connect').prop('checked', mobileAppSettings.autoConnect || false);
+    
+    // Setup event handlers
+    setupMobileAppSettingsHandlers();
+}
+
+//MARK: populateMobileAppCharacterSelect()
+function populateMobileAppCharacterSelect(selectedId = null) {
+    const $select = $('#mobile_app_default_character');
+    $select.empty();
+    $select.append('<option value="" data-i18n="None">None</option>');
+    
+    if (characters && characters.length > 0) {
+        characters.forEach((char, index) => {
+            if (char && char.name) {
+                const avatar = char.avatar || '';
+                const name = char.name || char.data?.name || 'Unnamed';
+                const option = $('<option></option>')
+                    .attr('value', avatar)
+                    .text(name);
+                
+                if (selectedId && avatar === selectedId) {
+                    option.prop('selected', true);
+                }
+                
+                $select.append(option);
+            }
+        });
+    }
+}
+
+//MARK: setupMobileAppSettingsHandlers()
+function setupMobileAppSettingsHandlers() {
+    // Single mode toggle - use event delegation to ensure it works
+    $(document).off('change', '#mobile_app_single_mode').on('change', '#mobile_app_single_mode', function() {
+        const isSingle = $(this).prop('checked');
+        const $container = $('#mobile_app_character_select_container');
+        if (isSingle) {
+            $container.show();
+            populateMobileAppCharacterSelect();
+        } else {
+            $container.hide();
+        }
+        saveSettingsDebounced();
+    });
+    
+    // Character select change
+    $(document).off('change', '#mobile_app_default_character').on('change', '#mobile_app_default_character', function() {
+        saveSettingsDebounced();
+    });
+    
+    // Auto connect toggle
+    $(document).off('change', '#mobile_app_auto_connect').on('change', '#mobile_app_auto_connect', function() {
+        saveSettingsDebounced();
+    });
+}
+
+// Initialize handlers immediately when DOM is ready
+$(document).ready(function() {
+    setupMobileAppSettingsHandlers();
+});
 
 //MARK: saveSettings()
 export async function saveSettings(loopCounter = 0) {
@@ -7781,6 +7901,7 @@ export async function saveSettings(loopCounter = 0) {
         background: background_settings,
         proxies: proxies,
         selected_proxy: selected_proxy,
+        mobile_app: getMobileAppSettings(),
     };
 
     try {

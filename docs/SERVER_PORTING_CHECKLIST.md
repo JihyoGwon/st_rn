@@ -14,17 +14,17 @@
 ## 1. 기본 캐릭터 데이터
 
 ### ✅ 필수 항목
-- [x] 캐릭터 파일 로드 및 파싱
-- [x] 캐릭터 설명 (description)
-- [x] 캐릭터 성격 (personality)
-- [x] 시나리오 (scenario)
-- [x] 캐릭터 이름 (name2)
-- [x] 시스템 프롬프트 (system_prompt)
-- [x] Post-History Instructions (jailbreak)
-- [x] 메시지 예제 (mes_example)
-- [x] 첫 메시지 (first_mes)
-- [x] 대체 인사말 (alternate_greetings)
-- [x] Creator Notes (creator_notes)
+- [ ] 캐릭터 파일 로드 및 파싱
+- [ ] 캐릭터 설명 (description)
+- [ ] 캐릭터 성격 (personality)
+- [ ] 시나리오 (scenario)
+- [ ] 캐릭터 이름 (name2)
+- [ ] 시스템 프롬프트 (system_prompt)
+- [ ] Post-History Instructions (jailbreak)
+- [ ] 메시지 예제 (mes_example)
+- [ ] 첫 메시지 (first_mes)
+- [ ] 대체 인사말 (alternate_greetings)
+- [ ] Creator Notes (creator_notes)
 
 ### ⚠️ 조건부 항목
 - [ ] Character Book (character_book) - 월드 인포와 연관
@@ -62,10 +62,10 @@
 - [ ] worldInfoBefore / worldInfoAfter 분리
 
 ### ⚠️ 간소화 버전 (기본 기능만)
-- [x] 월드 인포 파일 로드 (현재 구현됨)
-- [x] 모든 엔트리 포함 (현재 구현됨)
-- [ ] 키워드 기반 필터링 (TODO)
-- [ ] 위치 기반 분리 (Before/After) (TODO)
+- [ ] 월드 인포 파일 로드
+- [ ] 모든 엔트리 포함
+- [ ] 키워드 기반 필터링
+- [ ] 위치 기반 분리 (Before/After)
 
 ---
 
@@ -177,7 +177,7 @@
 ## 6. 메시지 처리
 
 ### ✅ 필수 항목
-- [x] 채팅 히스토리 로드 (현재 구현됨)
+- [ ] 채팅 히스토리 로드
 - [ ] 채팅 히스토리 포맷팅
 - [ ] 메시지 예제 (Message Examples) 처리
 - [ ] 메시지 예제 파싱 (`parseExampleIntoIndividual`)
@@ -290,10 +290,10 @@
 ## 11. 우선순위 추천
 
 ### Phase 1: 기본 기능 (현재 진행 중)
-- [x] 캐릭터 데이터 로드
-- [x] 채팅 히스토리 로드
-- [x] 기본 메시지 배열 생성
-- [x] 월드 인포 기본 로드
+- [ ] 캐릭터 데이터 로드
+- [ ] 채팅 히스토리 로드
+- [ ] 기본 메시지 배열 생성
+- [ ] 월드 인포 기본 로드
 
 ### Phase 2: 필수 확장 기능
 - [ ] Authors Note (간단)

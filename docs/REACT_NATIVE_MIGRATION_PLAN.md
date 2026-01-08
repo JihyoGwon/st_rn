@@ -199,38 +199,6 @@ X-CSRF-Token: {token}
 - **스트리밍**: EventSource 또는 fetch with ReadableStream
 - **스토리지**: AsyncStorage 또는 MMKV
 
-### 프로젝트 구조
-
-```
-sillytavern-mobile/
-├── src/
-│   ├── api/
-│   │   ├── client.js              # API 클라이언트
-│   │   ├── auth.js                # 인증 관련
-│   │   ├── chats.js               # 채팅 관련
-│   │   └── characters.js          # 캐릭터 관련
-│   ├── screens/
-│   │   ├── LoginScreen.js
-│   │   ├── CharacterListScreen.js
-│   │   ├── ChatScreen.js
-│   │   └── ChatHistoryScreen.js
-│   ├── components/
-│   │   ├── MessageBubble.js
-│   │   ├── CharacterCard.js
-│   │   └── StreamingText.js
-│   ├── hooks/
-│   │   ├── useChat.js
-│   │   ├── useStreaming.js
-│   │   └── useAuth.js
-│   ├── utils/
-│   │   ├── storage.js
-│   │   └── constants.js
-│   └── App.js
-├── package.json
-└── app.json
-```
-
----
 
 ## API 명세
 

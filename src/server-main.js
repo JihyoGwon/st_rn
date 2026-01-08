@@ -419,4 +419,12 @@ initUserStorage(globalThis.DATA_ROOT)
     .then(preSetupTasks)
     .then(apply404Middleware)
     .then(() => new ServerStartup(app, cliArgs).start())
-    .then(postSetupTasks);
+    .then(postSetupTasks)
+    .catch((error) => {
+        console.error('Fatal error during server startup:');
+        console.error(error);
+        if (error.stack) {
+            console.error(error.stack);
+        }
+        process.exit(1);
+    });
