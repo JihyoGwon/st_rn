@@ -190,6 +190,7 @@
 - [ ] 비디오 인라인 처리 (Video Inlining)
 - [ ] 오디오 인라인 처리 (Audio Inlining)
 - [ ] 도구 호출 지원 (Tool Calling)
+- [x] 추론 설정 지원 (Reasoning Effort, Include Reasoning) - Gemini 모델용 ✅
 - [ ] 추론 서명 지원 (Reasoning Signature)
 - [ ] In-Chat Injection 처리 (`populationInjectionPrompts`)
 - [ ] Continue 타입 처리
@@ -232,6 +233,7 @@
 ### ✅ 필수 항목
 - [x] 사용자 설정 로드 (name1, settings) - `/api/chats/prepare-messages`에서 처리
 - [x] OpenAI 설정 로드 (`oai_settings`) - `/api/settings/get`에서 동기화
+- [x] Gemini 추론 설정 로드 (`reasoning_effort`, `include_reasoning`) - 서버 설정 동기화 및 API 요청에 포함 ✅
 - [ ] Power User 설정 로드 (`power_user`)
 - [ ] 확장 설정 로드 (`extension_settings`)
 - [ ] Bias 처리 (`getBiasStrings`)

@@ -15,6 +15,8 @@ export interface ServerSettings {
   google_model?: string;
   temp_openai?: number;
   openai_max_tokens?: number;
+  reasoning_effort?: string; // 'auto', 'min', 'low', 'medium', 'high', 'max'
+  include_reasoning?: boolean; // 추론 결과 반환 여부
   [key: string]: any; // 기타 설정들
 }
 

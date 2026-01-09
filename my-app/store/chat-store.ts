@@ -242,12 +242,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         generateData.vertexai_region = vertexaiRegion;
       }
       
+      // 추론(reasoning) 설정 추가 (Gemini 모델용)
+      if (serverSettings.reasoning_effort !== undefined) {
+        generateData.reasoning_effort = serverSettings.reasoning_effort;
+      }
+      if (serverSettings.include_reasoning !== undefined) {
+        generateData.include_reasoning = serverSettings.include_reasoning;
+      }
+      
       // 디버깅: 최종 generateData 확인
       console.log('[ChatStore] 최종 generateData:', {
         chat_completion_source: generateData.chat_completion_source,
         model: generateData.model,
         vertexai_auth_mode: generateData.vertexai_auth_mode,
         vertexai_region: generateData.vertexai_region,
+        reasoning_effort: generateData.reasoning_effort,
+        include_reasoning: generateData.include_reasoning,
       });
       
       const completionResponse = await apiClient.generateChatCompletion(generateData);

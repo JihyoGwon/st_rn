@@ -316,8 +316,10 @@ GET /api/chats/recent
 - [x] 채팅 히스토리 로드
 - [x] 시스템 프롬프트 조합 (기본 구현 완료)
 - [x] 월드 인포 적용 (worldInfoBefore, worldInfoAfter) - 기본 로드 완료, 채팅 스캔 로직은 TODO
+- [x] 모델 설정 적용:
+  - [x] Gemini 추론 기능 (reasoning_effort, include_reasoning) ✅
 - [ ] 확장 프롬프트 적용:
-  - [ ] Summary (1_memory)
+  - [x] Summary (1_memory)
   - [ ] Authors Note (2_floating_prompt)
   - [ ] 벡터 메모리 (3_vectors)
   - [ ] Data Bank 벡터 (4_vectors_data_bank)
