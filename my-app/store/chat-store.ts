@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiClient } from '@/src/api/client';
+import { apiClient } from '@/lib/api/client';
 import { useAppSettingsStore } from './app-settings-store';
 
 /**

@@ -14,17 +14,17 @@
 ## 1. 기본 캐릭터 데이터
 
 ### ✅ 필수 항목
-- [ ] 캐릭터 파일 로드 및 파싱
-- [ ] 캐릭터 설명 (description)
-- [ ] 캐릭터 성격 (personality)
-- [ ] 시나리오 (scenario)
-- [ ] 캐릭터 이름 (name2)
-- [ ] 시스템 프롬프트 (system_prompt)
-- [ ] Post-History Instructions (jailbreak)
-- [ ] 메시지 예제 (mes_example)
-- [ ] 첫 메시지 (first_mes)
-- [ ] 대체 인사말 (alternate_greetings)
-- [ ] Creator Notes (creator_notes)
+- [x] 캐릭터 파일 로드 및 파싱 (`/api/characters/all`)
+- [x] 캐릭터 설명 (description) - 서버에서 로드됨
+- [x] 캐릭터 성격 (personality) - 서버에서 로드됨
+- [x] 시나리오 (scenario) - 서버에서 로드됨
+- [x] 캐릭터 이름 (name2) - 서버에서 로드됨
+- [x] 시스템 프롬프트 (system_prompt) - 서버에서 로드됨
+- [x] Post-History Instructions (jailbreak) - 서버에서 로드됨
+- [x] 메시지 예제 (mes_example) - 서버에서 로드됨
+- [x] 첫 메시지 (first_mes) - 서버에서 로드됨
+- [x] 대체 인사말 (alternate_greetings) - 서버에서 로드됨
+- [x] Creator Notes (creator_notes) - 서버에서 로드됨
 
 ### ⚠️ 조건부 항목
 - [ ] Character Book (character_book) - 월드 인포와 연관
@@ -62,10 +62,10 @@
 - [ ] worldInfoBefore / worldInfoAfter 분리
 
 ### ⚠️ 간소화 버전 (기본 기능만)
-- [ ] 월드 인포 파일 로드
-- [ ] 모든 엔트리 포함
-- [ ] 키워드 기반 필터링
-- [ ] 위치 기반 분리 (Before/After)
+- [x] 월드 인포 파일 로드 (`/api/chats/prepare-messages`에서 처리)
+- [x] 모든 엔트리 포함 (현재는 모든 엔트리 포함)
+- [ ] 키워드 기반 필터링 (TODO: 스캔 로직 미구현)
+- [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함)
 
 ---
 
@@ -177,8 +177,8 @@
 ## 6. 메시지 처리
 
 ### ✅ 필수 항목
-- [ ] 채팅 히스토리 로드
-- [ ] 채팅 히스토리 포맷팅
+- [x] 채팅 히스토리 로드 (`/api/chats/get`)
+- [x] 채팅 히스토리 포맷팅 (`/api/chats/prepare-messages`에서 처리)
 - [ ] 메시지 예제 (Message Examples) 처리
 - [ ] 메시지 예제 파싱 (`parseExampleIntoIndividual`)
 - [ ] 메시지 이름 처리 (Names Behavior)
@@ -227,8 +227,8 @@
 ## 9. 기타 기능
 
 ### ✅ 필수 항목
-- [ ] 사용자 설정 로드 (name1, settings)
-- [ ] OpenAI 설정 로드 (`oai_settings`)
+- [x] 사용자 설정 로드 (name1, settings) - `/api/chats/prepare-messages`에서 처리
+- [x] OpenAI 설정 로드 (`oai_settings`) - `/api/settings/get`에서 동기화
 - [ ] Power User 설정 로드 (`power_user`)
 - [ ] 확장 설정 로드 (`extension_settings`)
 - [ ] Bias 처리 (`getBiasStrings`)
@@ -290,10 +290,10 @@
 ## 11. 우선순위 추천
 
 ### Phase 1: 기본 기능 (현재 진행 중)
-- [ ] 캐릭터 데이터 로드
-- [ ] 채팅 히스토리 로드
-- [ ] 기본 메시지 배열 생성
-- [ ] 월드 인포 기본 로드
+- [x] 캐릭터 데이터 로드 (`/api/characters/all`)
+- [x] 채팅 히스토리 로드 (`/api/chats/get`)
+- [x] 기본 메시지 배열 생성 (`/api/chats/prepare-messages`)
+- [x] 월드 인포 기본 로드 (파일 로드 완료, 스캔 로직은 TODO)
 
 ### Phase 2: 필수 확장 기능
 - [ ] Authors Note (간단)

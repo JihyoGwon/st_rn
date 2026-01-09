@@ -1113,6 +1113,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
 
         // Load chat history if chat_id is provided
         let chatHistory = [];
+        let summary = null; // Summary from chat history
         if (chat_id) {
             const characterDirName = characterFileName.replace('.png', '');
             const chatDirectory = path.join(request.user.directories.chats, characterDirName);
@@ -1121,22 +1122,52 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             
             if (fs.existsSync(chatFilePath)) {
                 chatHistory = getChatData(chatFilePath);
+                
+                // Find the latest summary from chat history (stored in extra.memory)
+                for (let i = chatHistory.length - 1; i >= 0; i--) {
+                    const chatItem = chatHistory[i];
+                    if (chatItem.extra && chatItem.extra.memory) {
+                        summary = chatItem.extra.memory;
+                        break;
+                    }
+                }
             }
         }
 
-        // Load user settings to get name1
+        // Load user settings to get name1 and extension settings
         let name1 = 'You';
+        let extensionSettings = {};
         try {
             const pathToSettings = path.join(request.user.directories.root, 'settings.json');
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
-                if (settings && settings.name1) {
-                    name1 = settings.name1;
+                if (settings) {
+                    if (settings.name1) {
+                        name1 = settings.name1;
+                    }
+                    // Load extension settings (for Summary, Authors Note, etc.)
+                    if (settings.extension_settings) {
+                        extensionSettings = settings.extension_settings;
+                    }
                 }
             }
         } catch (error) {
             console.warn('[prepare-messages] Failed to load user settings:', error);
+        }
+        
+        // Get Summary settings
+        const memorySettings = extensionSettings.memory || {};
+        const summaryTemplate = memorySettings.template || '[Summary: {{summary}}]';
+        const summaryPosition = memorySettings.position || 0; // 0 = IN_PROMPT, 1 = IN_CHAT
+        const summaryDepth = memorySettings.depth || 2;
+        const summaryRole = memorySettings.role || 0; // 0 = SYSTEM, 1 = USER, 2 = ASSISTANT
+        
+        // Format summary with template if summary exists
+        let formattedSummary = null;
+        if (summary) {
+            // Replace {{summary}} placeholder in template
+            formattedSummary = summaryTemplate.replace(/\{\{summary\}\}/g, summary);
         }
 
         // Prepare basic message array
@@ -1205,8 +1236,83 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             });
         }
 
+        // Apply Summary extension prompt
+        // Summary position: 0 = IN_PROMPT (Before/After Main Prompt), 1 = IN_CHAT (at depth)
+        if (formattedSummary) {
+            if (summaryPosition === 0) {
+                // IN_PROMPT: Add before or after main prompts
+                // For now, add after scenario (before chat history)
+                // TODO: Support Before/After positioning based on settings
+                const scenarioIndex = messages.findIndex(m => m.content === scenario);
+                if (scenarioIndex >= 0) {
+                    messages.splice(scenarioIndex + 1, 0, {
+                        role: summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant'),
+                        content: formattedSummary,
+                        identifier: 'summary'
+                    });
+                } else {
+                    // If scenario not found, add at the end of system prompts
+                    messages.push({
+                        role: summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant'),
+                        content: formattedSummary,
+                        identifier: 'summary'
+                    });
+                }
+            } else {
+                // IN_CHAT: Add at specific depth in chat history
+                // Depth 0 = before last message, Depth 1 = before second-to-last, etc.
+                // For now, add before the last user message (depth 0)
+                // TODO: Implement proper depth-based insertion
+                const lastUserIndex = messages.map((m, i) => ({ role: m.role, index: i }))
+                    .filter(m => m.role === 'user')
+                    .pop()?.index;
+                
+                if (lastUserIndex !== undefined) {
+                    messages.splice(lastUserIndex, 0, {
+                        role: summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant'),
+                        content: formattedSummary,
+                        identifier: 'summary',
+                        injected: true
+                    });
+                }
+            }
+        }
+        
+        // Check if Summary should be generated automatically
+        // Summary is generated if:
+        // 1. Summary settings are enabled (promptInterval > 0)
+        // 2. Enough messages since last summary (>= promptInterval)
+        // 3. Summary source is 'main' (only Main API is supported for now)
+        const shouldGenerateSummary = memorySettings.source === 'main' && 
+                                     memorySettings.promptInterval > 0 &&
+                                     chatHistory.length >= memorySettings.promptInterval;
+        
+        if (shouldGenerateSummary && !summary) {
+            // Count messages since last summary
+            let messagesSinceLastSummary = 0;
+            for (let i = chatHistory.length - 1; i >= 0; i--) {
+                if (chatHistory[i].extra && chatHistory[i].extra.memory) {
+                    break;
+                }
+                messagesSinceLastSummary++;
+            }
+            
+            // Generate summary if enough messages
+            if (messagesSinceLastSummary >= memorySettings.promptInterval) {
+                try {
+                    // Generate summary asynchronously (don't block the response)
+                    generateSummaryForChat(request.user.directories, characterFileName, chat_id, memorySettings, name1, name2)
+                        .catch(error => {
+                            console.error('[prepare-messages] Failed to generate summary:', error);
+                        });
+                } catch (error) {
+                    console.error('[prepare-messages] Error starting summary generation:', error);
+                }
+            }
+        }
+        
         // TODO: Implement proper world info scanning based on chat history (checkWorldInfo equivalent)
-        // TODO: Apply extension prompts (vectors, summary, etc.)
+        // TODO: Apply other extension prompts (vectors, authors note, etc.)
         // TODO: Calculate token budget
         // TODO: Apply prompt formatting (scenario_format, personality_format, etc.)
 
@@ -1234,3 +1340,97 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         });
     }
 });
+
+/**
+ * Generate summary for a chat
+ * @param {object} directories User directories
+ * @param {string} characterFileName Character file name
+ * @param {string} chatId Chat ID
+ * @param {object} memorySettings Memory extension settings
+ * @param {string} name1 User name
+ * @param {string} name2 Character name
+ * @returns {Promise<string|null>} Generated summary or null
+ */
+async function generateSummaryForChat(directories, characterFileName, chatId, memorySettings, name1, name2) {
+    if (!chatId) {
+        return null;
+    }
+    
+    try {
+        const characterDirName = characterFileName.replace('.png', '');
+        const chatDirectory = path.join(directories.chats, characterDirName);
+        const chatFileName = `${chatId}.jsonl`;
+        const chatFilePath = path.join(chatDirectory, sanitize(chatFileName));
+        
+        if (!fs.existsSync(chatFilePath)) {
+            console.warn('[generateSummaryForChat] Chat file not found:', chatFilePath);
+            return null;
+        }
+        
+        const chatHistory = getChatData(chatFilePath);
+        if (!chatHistory || chatHistory.length === 0) {
+            return null;
+        }
+        
+        // Find the latest summary index
+        let latestSummaryIndex = -1;
+        let latestSummary = null;
+        for (let i = chatHistory.length - 1; i >= 0; i--) {
+            if (chatHistory[i].extra && chatHistory[i].extra.memory) {
+                latestSummaryIndex = i;
+                latestSummary = chatHistory[i].extra.memory;
+                break;
+            }
+        }
+        
+        // Collect messages since last summary (excluding the last message)
+        const messagesToSummarize = [];
+        const startIndex = latestSummaryIndex + 1;
+        const endIndex = chatHistory.length - 1; // Exclude last message
+        
+        for (let i = startIndex; i <= endIndex && i < chatHistory.length; i++) {
+            const chatItem = chatHistory[i];
+            if (chatItem.mes && chatItem.mes.trim() && !chatItem.is_system) {
+                const senderName = chatItem.is_user || chatItem.name === name1 ? name1 : name2;
+                messagesToSummarize.push(`${senderName}:\n${chatItem.mes}`);
+            }
+        }
+        
+        if (messagesToSummarize.length === 0) {
+            return null;
+        }
+        
+        // Build summary prompt
+        const summaryPrompt = (memorySettings.prompt || 'Ignore previous instructions. Summarize the most important facts and events in the story so far. If a summary already exists in your memory, use that as a base and expand with new facts. Limit the summary to {{words}} words or less. Your response should include nothing but the summary.')
+            .replace(/\{\{words\}\}/g, String(memorySettings.promptWords || 200));
+        
+        // Build the text to summarize
+        const textToSummarize = [
+            latestSummary ? latestSummary : '',
+            ...messagesToSummarize
+        ].filter(t => t.trim()).join('\n\n');
+        
+        if (!textToSummarize.trim()) {
+            return null;
+        }
+        
+        // Generate summary using Main API
+        // TODO: Implement actual API call to generate summary
+        // For now, this is a placeholder - the actual implementation should call
+        // the chat completion API with the summary prompt and text
+        console.log('[generateSummaryForChat] Summary generation requested but not fully implemented yet');
+        console.log('[generateSummaryForChat] Prompt:', summaryPrompt.substring(0, 100));
+        console.log('[generateSummaryForChat] Text to summarize length:', textToSummarize.length);
+        
+        // Placeholder: return null for now
+        // In production, this should:
+        // 1. Call /api/backends/chat-completions/generate with summary messages
+        // 2. Extract the generated summary from the response
+        // 3. Save it to chat history
+        return null;
+        
+    } catch (error) {
+        console.error('[generateSummaryForChat] Error:', error);
+        return null;
+    }
+}
