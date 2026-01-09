@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useAppSettingsStore } from '@/store/app-settings-store';
 
 export default function ProfileScreen() {
-  const { settings, setServerUrl, loadFromStorage } = useAppSettingsStore();
+  const { settings, setServerUrl, loadFromStorage, autoDiscoverServer, isDiscovering } = useAppSettingsStore();
   const [serverUrl, setServerUrlLocal] = useState(settings.serverUrl || '');
 
   useEffect(() => {
@@ -34,6 +34,23 @@ export default function ProfileScreen() {
 
     setServerUrl(serverUrl.trim());
     Alert.alert('성공', '서버 URL이 저장되었습니다.');
+  };
+
+  const handleAutoDiscover = async () => {
+    Alert.alert('서버 자동 감지', '로컬 네트워크에서 서버를 찾는 중입니다...\n잠시만 기다려주세요.');
+    
+    try {
+      const foundIP = await autoDiscoverServer();
+      if (foundIP) {
+        setServerUrlLocal(`http://${foundIP}:8001`);
+        Alert.alert('성공', `서버를 찾았습니다!\n${foundIP}:8001`);
+      } else {
+        Alert.alert('실패', '서버를 찾을 수 없습니다.\n서버가 실행 중인지 확인해주세요.');
+      }
+    } catch (error) {
+      console.error('서버 자동 감지 실패:', error);
+      Alert.alert('오류', '서버 자동 감지 중 오류가 발생했습니다.');
+    }
   };
 
   return (
@@ -62,6 +79,12 @@ export default function ProfileScreen() {
               title="저장"
               onPress={handleSave}
               style={styles.saveButton}
+            />
+            <Button
+              title={isDiscovering ? "감지 중..." : "서버 자동 감지"}
+              onPress={handleAutoDiscover}
+              style={styles.discoverButton}
+              disabled={isDiscovering}
             />
           </ThemedView>
 
@@ -119,6 +142,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   saveButton: {
+    marginTop: 8,
+  },
+  discoverButton: {
     marginTop: 8,
   },
   infoSection: {
