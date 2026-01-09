@@ -21,9 +21,9 @@ SillyTavern의 Summary 기능을 서버로 포팅하여 모바일 앱에서도 S
 - [x] 자동 생성 체크: `prepare-messages`에서 업데이트 빈도 체크
 
 ### 미구현
-- [ ] 실제 Summary 생성 API 호출
-- [ ] Summary 생성 엔드포인트 (`/api/chats/summarize`)
-- [ ] Summary 저장 로직 (채팅 히스토리에 저장)
+- [x] 실제 Summary 생성 API 호출 ✅
+- [x] Summary 생성 엔드포인트 (`/api/chats/summarize`) ✅
+- [x] Summary 저장 로직 (채팅 히스토리에 저장) ✅
 
 ## 🔍 기술적 분석
 

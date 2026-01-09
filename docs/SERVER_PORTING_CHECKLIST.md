@@ -74,15 +74,18 @@
 ### ✅ 알려진 확장 프롬프트
 
 #### 3.1 Summary (1_memory)
-- [ ] Summary 설정 로드
-- [ ] Summary 생성 로직
-  - [ ] 요약 소스 선택 (extras, main, webllm)
-  - [ ] 요약 프롬프트 실행
-  - [ ] 요약 템플릿 적용
-  - [ ] 요약 간격 관리 (Prompt Interval)
-  - [ ] 요약 단어 수 관리 (Prompt Words)
-  - [ ] 강제 요약 단어 수 (Prompt Force Words)
-- [ ] Summary 위치/깊이/역할 적용
+- [x] Summary 설정 로드
+- [x] Summary 생성 로직
+  - [x] 요약 소스 선택 (main) ✅
+  - [ ] 요약 소스 선택 (extras, webllm) - 미지원
+  - [x] 요약 프롬프트 실행
+  - [x] 요약 템플릿 적용
+  - [x] 요약 간격 관리 (Prompt Interval)
+  - [x] 요약 단어 수 관리 (Prompt Words)
+- [ ] 강제 요약 단어 수 (Prompt Force Words)
+- [x] 요청당 최대 메시지 수 (Max Messages Per Request)
+- [x] 프롬프트 빌더 모드 (Prompt Builder: RAW_BLOCKING, RAW_NON_BLOCKING)
+- [x] Summary 위치/깊이/역할 적용
 
 #### 3.2 Authors Note (2_floating_prompt)
 - [ ] Authors Note 설정 로드

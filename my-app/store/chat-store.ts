@@ -40,6 +40,7 @@ interface ChatStore {
   sendMessage: (text: string, characterId: string) => Promise<void>;
   clearMessages: () => void;
   setCurrentChatId: (chatId: string | null) => void;
+  resetChat: (characterId: string, chatId?: string) => Promise<void>;
 }
 
 /**
@@ -302,5 +303,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
    * 현재 채팅 ID 설정
    */
   setCurrentChatId: (chatId: string | null) => set({ currentChatId: chatId }),
+
+  /**
+   * 채팅 리셋 (서버에서 채팅 내용 비우기)
+   */
+  resetChat: async (characterId: string, chatId?: string) => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      const fileName = chatId || 'chat';
+      await apiClient.resetChat(characterId, fileName);
+      
+      // 로컬 메시지도 초기화
+      set({ 
+        messages: [],
+        currentChatId: fileName,
+        isLoading: false 
+      });
+    } catch (error) {
+      console.error('[ChatStore] 채팅 리셋 실패:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : '채팅을 리셋할 수 없습니다';
+      set({ 
+        error: errorMessage,
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
 }));
 

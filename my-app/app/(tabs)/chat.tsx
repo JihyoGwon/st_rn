@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
@@ -12,6 +13,7 @@ import { ChatMessageComponent } from '@/components/chat-message';
 import { useChatStore } from '@/store/chat-store';
 import { useCharacterStore } from '@/store/character-store';
 import { useAppSettingsStore } from '@/store/app-settings-store';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -24,11 +26,14 @@ export default function ChatScreen() {
     loadChatHistory, 
     addMessage, 
     sendMessage,
-    currentChatId 
+    currentChatId,
+    resetChat
   } = useChatStore();
   const { selectedCharacter } = useCharacterStore();
   const { settings, loadFromStorage } = useAppSettingsStore();
   const flashListRef = useRef<FlashList<any>>(null);
+  const textColor = useThemeColor({}, 'text');
+  const iconColor = useThemeColor({}, 'tint');
 
   // 화면 진입 시 설정 확인 및 채팅 히스토리 로드
   useEffect(() => {
@@ -102,9 +107,54 @@ export default function ChatScreen() {
     }
   };
 
+  const handleResetChat = () => {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    Alert.alert(
+      '채팅 리셋',
+      '모든 채팅 내용이 삭제됩니다. 계속하시겠습니까?',
+      [
+        {
+          text: '취소',
+          style: 'cancel',
+        },
+        {
+          text: '리셋',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await resetChat(selectedCharacter.avatar, currentChatId || 'chat');
+              // 리셋 후 채팅 히스토리 다시 로드 (빈 상태로)
+              await loadChatHistory(selectedCharacter.avatar, currentChatId || 'chat');
+            } catch (error) {
+              console.error('채팅 리셋 실패:', error);
+              Alert.alert('오류', '채팅을 리셋할 수 없습니다.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ThemedView style={styles.container}>
+        {/* 헤더 */}
+        <View style={styles.header}>
+          <ThemedText style={styles.headerTitle}>
+            {selectedCharacter?.name || '채팅'}
+          </ThemedText>
+          <TouchableOpacity 
+            style={styles.menuButton}
+            onPress={handleResetChat}
+            disabled={!selectedCharacter || isLoading}
+          >
+            <MaterialIcons name="more-vert" size={24} color={iconColor} />
+          </TouchableOpacity>
+        </View>
+
         <KeyboardAvoidingView
           style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -166,6 +216,22 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  menuButton: {
+    padding: 4,
   },
   keyboardView: {
     flex: 1,

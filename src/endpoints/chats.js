@@ -571,6 +571,41 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
     }
 });
 
+router.post('/reset', validateAvatarUrlMiddleware, async function (request, response) {
+    try {
+        const handle = request.user.profile.handle;
+        const cardName = String(request.body.avatar_url).replace('.png', '');
+        const chatFileName = request.body.chatfile || 'chat';
+        
+        // Ensure .jsonl extension
+        const chatFileNameWithExt = path.extname(chatFileName) ? chatFileName : `${chatFileName}.jsonl`;
+        const chatFilePath = path.join(request.user.directories.chats, cardName, sanitize(chatFileNameWithExt));
+        
+        // Load existing chat to preserve metadata if needed
+        let existingChat = [];
+        if (fs.existsSync(chatFilePath)) {
+            existingChat = getChatData(chatFilePath);
+        }
+        
+        // Create empty chat array, preserving chat_metadata if it exists
+        const emptyChat = [];
+        if (existingChat.length > 0 && existingChat[0]?.chat_metadata) {
+            // Preserve metadata in first message
+            emptyChat.push({
+                chat_metadata: existingChat[0].chat_metadata
+            });
+        }
+        
+        // Save empty chat
+        await trySaveChat(emptyChat, chatFilePath, false, handle, cardName, request.user.directories.backups);
+        
+        return response.send({ ok: true });
+    } catch (error) {
+        console.error('[reset] Error resetting chat:', error);
+        return response.status(500).send({ error: 'Failed to reset chat' });
+    }
+});
+
 router.post('/export', validateAvatarUrlMiddleware, async function (request, response) {
     if (!request.body.file || (!request.body.avatar_url && request.body.is_group === false)) {
         return response.sendStatus(400);
@@ -1520,36 +1555,13 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             }
         }
         
-        // Collect messages since last summary (excluding the last message)
-        const messagesToSummarize = [];
-        const startIndex = latestSummaryIndex + 1;
-        const endIndex = chatHistory.length - 1; // Exclude last message
-        
-        for (let i = startIndex; i <= endIndex && i < chatHistory.length; i++) {
-            const chatItem = chatHistory[i];
-            if (chatItem.mes && chatItem.mes.trim() && !chatItem.is_system) {
-                const senderName = chatItem.is_user || chatItem.name === name1 ? name1 : name2;
-                messagesToSummarize.push(`${senderName}:\n${chatItem.mes}`);
-            }
-        }
-        
-        if (messagesToSummarize.length === 0) {
-            return null;
-        }
+        // Get prompt builder mode (0=DEFAULT, 1=RAW_BLOCKING, 2=RAW_NON_BLOCKING)
+        const promptBuilder = memorySettings.prompt_builder !== undefined ? memorySettings.prompt_builder : 0;
+        const isRawMode = promptBuilder === 1 || promptBuilder === 2; // RAW_BLOCKING or RAW_NON_BLOCKING
         
         // Build summary prompt
         const summaryPrompt = (memorySettings.prompt || 'Ignore previous instructions. Summarize the most important facts and events in the story so far. If a summary already exists in your memory, use that as a base and expand with new facts. Limit the summary to {{words}} words or less. Your response should include nothing but the summary.')
             .replace(/\{\{words\}\}/g, String(memorySettings.promptWords || 200));
-        
-        // Build the text to summarize
-        const textToSummarize = [
-            latestSummary ? latestSummary : '',
-            ...messagesToSummarize
-        ].filter(t => t.trim()).join('\n\n');
-        
-        if (!textToSummarize.trim()) {
-            return null;
-        }
         
         // Load server settings for chat completion API
         let serverSettings = {};
@@ -1570,17 +1582,105 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             console.warn('[generateSummaryForChat] Failed to load server settings:', error);
         }
         
-        // Prepare messages for summary generation
-        const summaryMessages = [
-            {
-                role: 'system',
-                content: summaryPrompt
-            },
-            {
-                role: 'user',
-                content: textToSummarize
+        // Collect messages for summary based on prompt builder mode
+        let messagesToSummarize = [];
+        let lastUsedIndex = -1;
+        const startIndex = latestSummaryIndex + 1;
+        const endIndex = chatHistory.length - 1; // Exclude last message
+        const maxMessagesPerRequest = memorySettings.maxMessagesPerRequest || 0;
+        
+        if (isRawMode) {
+            // RAW mode: Collect messages with token/message limit consideration
+            // For now, we'll use a simple word count estimation instead of token counting
+            // (Token counting would require model-specific tokenizer which is complex)
+            const chatBuffer = [];
+            
+            for (let i = startIndex; i <= endIndex && i < chatHistory.length; i++) {
+                const chatItem = chatHistory[i];
+                if (chatItem.mes && chatItem.mes.trim() && !chatItem.is_system) {
+                    const senderName = chatItem.is_user || chatItem.name === name1 ? name1 : name2;
+                    const entry = `${senderName}:\n${chatItem.mes}`;
+                    chatBuffer.push(entry);
+                    lastUsedIndex = i;
+                    
+                    // Apply maxMessagesPerRequest limit if set
+                    if (maxMessagesPerRequest > 0 && chatBuffer.length >= maxMessagesPerRequest) {
+                        break;
+                    }
+                }
             }
-        ];
+            
+            messagesToSummarize = chatBuffer;
+        } else {
+            // DEFAULT mode: Collect all messages (simple approach)
+            for (let i = startIndex; i <= endIndex && i < chatHistory.length; i++) {
+                const chatItem = chatHistory[i];
+                if (chatItem.mes && chatItem.mes.trim() && !chatItem.is_system) {
+                    const senderName = chatItem.is_user || chatItem.name === name1 ? name1 : name2;
+                    messagesToSummarize.push(`${senderName}:\n${chatItem.mes}`);
+                }
+            }
+        }
+        
+        if (messagesToSummarize.length === 0) {
+            return null;
+        }
+        
+        // Prepare messages for summary generation based on prompt builder mode
+        let summaryMessages = [];
+        
+        if (isRawMode) {
+            // RAW mode: Build raw prompt string
+            // Format: [Summary Prompt]\n\n[Existing Summary]\n\n[Message 1]\n\n[Message 2]...
+            const rawPromptParts = [];
+            
+            // Add existing summary if exists
+            if (latestSummary) {
+                rawPromptParts.push(latestSummary);
+            }
+            
+            // Add messages
+            rawPromptParts.push(...messagesToSummarize);
+            
+            const rawPrompt = rawPromptParts.filter(t => t.trim()).join('\n\n');
+            
+            if (!rawPrompt.trim()) {
+                return null;
+            }
+            
+            // RAW mode: system prompt + raw text as user message
+            summaryMessages = [
+                {
+                    role: 'system',
+                    content: summaryPrompt
+                },
+                {
+                    role: 'user',
+                    content: rawPrompt
+                }
+            ];
+        } else {
+            // DEFAULT mode: Standard message format
+            const textToSummarize = [
+                latestSummary ? latestSummary : '',
+                ...messagesToSummarize
+            ].filter(t => t.trim()).join('\n\n');
+            
+            if (!textToSummarize.trim()) {
+                return null;
+            }
+            
+            summaryMessages = [
+                {
+                    role: 'system',
+                    content: summaryPrompt
+                },
+                {
+                    role: 'user',
+                    content: textToSummarize
+                }
+            ];
+        }
         
         // Call chat completion API via HTTP request
         try {
@@ -1711,9 +1811,19 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             generatedSummary = generatedSummary.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
             
             // Save summary to chat history
-            // Save to second-to-last message (before the last message)
-            const saveIndex = chatHistory.length - 2;
-            if (saveIndex >= 0) {
+            // In RAW mode, save to the last used message index
+            // In DEFAULT mode, save to second-to-last message (before the last message)
+            let saveIndex = -1;
+            
+            if (isRawMode && lastUsedIndex >= 0) {
+                // RAW mode: Save to the last message that was included in summary
+                saveIndex = lastUsedIndex;
+            } else {
+                // DEFAULT mode: Save to second-to-last message
+                saveIndex = chatHistory.length - 2;
+            }
+            
+            if (saveIndex >= 0 && saveIndex < chatHistory.length) {
                 if (!chatHistory[saveIndex].extra) {
                     chatHistory[saveIndex].extra = {};
                 }
@@ -1724,10 +1834,10 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 const cardName = characterDirName;
                 await trySaveChat(chatHistory, chatFilePath, false, handle, cardName, directories.backups);
                 
-                console.log('[generateSummaryForChat] Summary generated and saved successfully');
+                console.log(`[generateSummaryForChat] Summary generated and saved successfully (mode: ${isRawMode ? 'RAW' : 'DEFAULT'}, saved at index: ${saveIndex})`);
                 return generatedSummary;
             } else {
-                console.warn('[generateSummaryForChat] Cannot save summary: not enough messages in chat history');
+                console.warn('[generateSummaryForChat] Cannot save summary: invalid save index');
                 return null;
             }
             

@@ -277,6 +277,19 @@ class ApiClient {
   }
 
   /**
+   * 채팅 리셋 (채팅 내용 비우기)
+   */
+  async resetChat(
+    avatarUrl: string,
+    chatfile: string = 'chat'
+  ): Promise<{ ok: boolean }> {
+    return this.post<{ ok: boolean }>('/api/chats/reset', {
+      avatar_url: avatarUrl,
+      chatfile: chatfile,
+    });
+  }
+
+  /**
    * 메시지 준비 (채팅 전송 전)
    */
   async prepareMessages(params: {
