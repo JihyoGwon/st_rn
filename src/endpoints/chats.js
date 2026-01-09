@@ -1301,7 +1301,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             if (messagesSinceLastSummary >= memorySettings.promptInterval) {
                 try {
                     // Generate summary asynchronously (don't block the response)
-                    generateSummaryForChat(request.user.directories, characterFileName, chat_id, memorySettings, name1, name2)
+                    // Pass the full request object to access session and CSRF token
+                    generateSummaryForChat(request.user.directories, characterFileName, chat_id, memorySettings, name1, name2, request)
                         .catch(error => {
                             console.error('[prepare-messages] Failed to generate summary:', error);
                         });
@@ -1342,6 +1343,141 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
 });
 
 /**
+ * Summarize chat endpoint
+ * POST /api/chats/summarize
+ */
+router.post('/summarize', validateAvatarUrlMiddleware, async function (request, response) {
+    try {
+        const { character_id, chat_id, force = false } = request.body;
+        
+        // Validate required fields
+        if (!character_id) {
+            return response.status(400).json({
+                success: false,
+                error: 'character_id is required',
+                code: 'MISSING_CHARACTER_ID'
+            });
+        }
+        
+        if (!chat_id) {
+            return response.status(400).json({
+                success: false,
+                error: 'chat_id is required',
+                code: 'MISSING_CHAT_ID'
+            });
+        }
+        
+        // Load character data
+        const characterFileName = character_id.endsWith('.png') ? character_id : `${character_id}.png`;
+        const characterFilePath = path.join(request.user.directories.characters, characterFileName);
+        
+        if (!fs.existsSync(characterFilePath)) {
+            return response.status(404).json({
+                success: false,
+                error: 'Character not found',
+                code: 'CHARACTER_NOT_FOUND'
+            });
+        }
+        
+        const characterJsonData = await parse(characterFilePath, 'png');
+        if (!characterJsonData) {
+            return response.status(500).json({
+                success: false,
+                error: 'Failed to parse character file',
+                code: 'CHARACTER_PARSE_ERROR'
+            });
+        }
+        
+        const characterData = tryParse(characterJsonData);
+        if (!characterData || !characterData.data) {
+            return response.status(500).json({
+                success: false,
+                error: 'Invalid character data format',
+                code: 'INVALID_CHARACTER_FORMAT'
+            });
+        }
+        
+        const name2 = characterData.data.name || 'Character';
+        
+        // Load user settings
+        let name1 = 'You';
+        let extensionSettings = {};
+        try {
+            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            if (fs.existsSync(pathToSettings)) {
+                const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
+                const settings = tryParse(settingsContent);
+                if (settings) {
+                    if (settings.name1) {
+                        name1 = settings.name1;
+                    }
+                    if (settings.extension_settings) {
+                        extensionSettings = settings.extension_settings;
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('[summarize] Failed to load user settings:', error);
+        }
+        
+        const memorySettings = extensionSettings.memory || {};
+        
+        // Check if summary should be generated
+        if (!force) {
+            // Check if source is 'main' (only Main API is supported)
+            if (memorySettings.source !== 'main') {
+                return response.status(400).json({
+                    success: false,
+                    error: 'Summary source must be "main"',
+                    code: 'INVALID_SOURCE'
+                });
+            }
+            
+            // Check if summary generation is enabled
+            if (!memorySettings.promptInterval || memorySettings.promptInterval <= 0) {
+                return response.status(400).json({
+                    success: false,
+                    error: 'Summary generation is not enabled (promptInterval must be > 0)',
+                    code: 'SUMMARY_DISABLED'
+                });
+            }
+        }
+        
+        // Generate summary
+        const summary = await generateSummaryForChat(
+            request.user.directories,
+            characterFileName,
+            chat_id,
+            memorySettings,
+            name1,
+            name2,
+            request
+        );
+        
+        if (!summary) {
+            return response.status(500).json({
+                success: false,
+                error: 'Failed to generate summary',
+                code: 'SUMMARY_GENERATION_FAILED'
+            });
+        }
+        
+        return response.json({
+            success: true,
+            summary: summary
+        });
+        
+    } catch (error) {
+        console.error('[summarize] Error:', error);
+        return response.status(500).json({
+            success: false,
+            error: error.message || 'Internal server error',
+            code: 'INTERNAL_ERROR'
+        });
+    }
+});
+
+/**
  * Generate summary for a chat
  * @param {object} directories User directories
  * @param {string} characterFileName Character file name
@@ -1349,9 +1485,10 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
  * @param {object} memorySettings Memory extension settings
  * @param {string} name1 User name
  * @param {string} name2 Character name
+ * @param {object} request Express request object (for internal API calls and CSRF token)
  * @returns {Promise<string|null>} Generated summary or null
  */
-async function generateSummaryForChat(directories, characterFileName, chatId, memorySettings, name1, name2) {
+async function generateSummaryForChat(directories, characterFileName, chatId, memorySettings, name1, name2, request = null) {
     if (!chatId) {
         return null;
     }
@@ -1414,20 +1551,190 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             return null;
         }
         
-        // Generate summary using Main API
-        // TODO: Implement actual API call to generate summary
-        // For now, this is a placeholder - the actual implementation should call
-        // the chat completion API with the summary prompt and text
-        console.log('[generateSummaryForChat] Summary generation requested but not fully implemented yet');
-        console.log('[generateSummaryForChat] Prompt:', summaryPrompt.substring(0, 100));
-        console.log('[generateSummaryForChat] Text to summarize length:', textToSummarize.length);
+        // Load server settings for chat completion API
+        let serverSettings = {};
+        try {
+            const pathToSettings = path.join(directories.root, 'settings.json');
+            if (fs.existsSync(pathToSettings)) {
+                const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
+                const settings = tryParse(settingsContent);
+                if (settings) {
+                    // Merge oai_settings into top level for easier access
+                    serverSettings = {
+                        ...settings,
+                        ...(settings.oai_settings || {}),
+                    };
+                }
+            }
+        } catch (error) {
+            console.warn('[generateSummaryForChat] Failed to load server settings:', error);
+        }
         
-        // Placeholder: return null for now
-        // In production, this should:
-        // 1. Call /api/backends/chat-completions/generate with summary messages
-        // 2. Extract the generated summary from the response
-        // 3. Save it to chat history
-        return null;
+        // Prepare messages for summary generation
+        const summaryMessages = [
+            {
+                role: 'system',
+                content: summaryPrompt
+            },
+            {
+                role: 'user',
+                content: textToSummarize
+            }
+        ];
+        
+        // Call chat completion API via HTTP request
+        try {
+            const nodeFetch = (await import('node-fetch')).default;
+            const baseUrl = `http://localhost:${process.env.PORT || 8001}`;
+            const generateUrl = `${baseUrl}/api/backends/chat-completions/generate`;
+            
+            // Prepare request body for chat completion
+            const chatCompletionSource = serverSettings.chat_completion_source || 'openai';
+            const requestBody = {
+                messages: summaryMessages,
+                chat_completion_source: chatCompletionSource,
+                model: serverSettings.openai_model || serverSettings.vertexai_model || 'gpt-3.5-turbo',
+                temperature: serverSettings.openai_temperature || serverSettings.vertexai_temperature || 0.7,
+                max_tokens: memorySettings.overrideResponseLength || serverSettings.openai_max_tokens || serverSettings.vertexai_max_tokens || 500,
+                stream: false,
+            };
+            
+            // Add Vertex AI specific settings if using Vertex AI
+            if (chatCompletionSource === 'google' || chatCompletionSource === 'vertexai') {
+                if (serverSettings.vertexai_auth_mode !== undefined) {
+                    requestBody.vertexai_auth_mode = serverSettings.vertexai_auth_mode;
+                }
+                if (serverSettings.vertexai_region !== undefined) {
+                    requestBody.vertexai_region = serverSettings.vertexai_region;
+                }
+                if (serverSettings.vertexai_model !== undefined) {
+                    requestBody.model = serverSettings.vertexai_model;
+                }
+            }
+            
+            // Add additional OpenAI settings if available
+            if (serverSettings.openai_top_p !== undefined) {
+                requestBody.top_p = serverSettings.openai_top_p;
+            }
+            if (serverSettings.openai_frequency_penalty !== undefined) {
+                requestBody.frequency_penalty = serverSettings.openai_frequency_penalty;
+            }
+            if (serverSettings.openai_presence_penalty !== undefined) {
+                requestBody.presence_penalty = serverSettings.openai_presence_penalty;
+            }
+            
+            // Debug: Log the request body to see what's being sent
+            console.log('[generateSummaryForChat] Request body:', JSON.stringify({
+                chat_completion_source: requestBody.chat_completion_source,
+                model: requestBody.model,
+                vertexai_auth_mode: requestBody.vertexai_auth_mode,
+                vertexai_region: requestBody.vertexai_region,
+            }, null, 2));
+            
+            console.log('[generateSummaryForChat] Calling chat completion API...');
+            
+            // Get CSRF token from request session if available
+            let csrfToken = null;
+            if (request && request.session) {
+                // Try to get CSRF token from session
+                csrfToken = request.session.csrfToken;
+                
+                // If not in session, generate one
+                if (!csrfToken && request.session) {
+                    try {
+                        const csrfResponse = await nodeFetch(`${baseUrl}/csrf-token`, {
+                            method: 'GET',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Cookie': request.headers.cookie || '', // Include session cookie
+                            },
+                        });
+                        if (csrfResponse.ok) {
+                            const csrfData = await csrfResponse.json();
+                            csrfToken = csrfData.token;
+                            // Store in session for next time
+                            if (request.session) {
+                                request.session.csrfToken = csrfToken;
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('[generateSummaryForChat] Failed to get CSRF token:', error);
+                    }
+                }
+            }
+            
+            // Make internal HTTP request to chat completion endpoint
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            
+            // Add CSRF token if available
+            if (csrfToken) {
+                headers['X-CSRF-Token'] = csrfToken;
+            }
+            
+            // Include session cookie if available
+            if (request && request.headers && request.headers.cookie) {
+                headers['Cookie'] = request.headers.cookie;
+            }
+            
+            const response = await nodeFetch(generateUrl, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(requestBody),
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[generateSummaryForChat] Chat completion API error:', response.status, errorText);
+                return null;
+            }
+            
+            const result = await response.json();
+            
+            // Extract summary from response
+            let generatedSummary = null;
+            if (result.choices && result.choices.length > 0) {
+                generatedSummary = result.choices[0].message?.content || result.choices[0].text;
+            } else if (result.text) {
+                generatedSummary = result.text;
+            } else if (typeof result === 'string') {
+                generatedSummary = result;
+            }
+            
+            if (!generatedSummary || !generatedSummary.trim()) {
+                console.warn('[generateSummaryForChat] Empty summary received from API');
+                return null;
+            }
+            
+            // Remove reasoning tags if present (for models like o1)
+            generatedSummary = generatedSummary.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+            
+            // Save summary to chat history
+            // Save to second-to-last message (before the last message)
+            const saveIndex = chatHistory.length - 2;
+            if (saveIndex >= 0) {
+                if (!chatHistory[saveIndex].extra) {
+                    chatHistory[saveIndex].extra = {};
+                }
+                chatHistory[saveIndex].extra.memory = generatedSummary;
+                
+                // Save chat history
+                const handle = path.basename(directories.root);
+                const cardName = characterDirName;
+                await trySaveChat(chatHistory, chatFilePath, false, handle, cardName, directories.backups);
+                
+                console.log('[generateSummaryForChat] Summary generated and saved successfully');
+                return generatedSummary;
+            } else {
+                console.warn('[generateSummaryForChat] Cannot save summary: not enough messages in chat history');
+                return null;
+            }
+            
+        } catch (error) {
+            console.error('[generateSummaryForChat] Error calling chat completion API:', error);
+            return null;
+        }
         
     } catch (error) {
         console.error('[generateSummaryForChat] Error:', error);

@@ -14,9 +14,11 @@ interface ChatMessageProps {
 export const ChatMessageComponent = ({ message }: ChatMessageProps) => {
   const colorScheme = useColorScheme();
   const isUser = message.isUser;
+  // Hooks must be called unconditionally - always call useThemeColor
+  const botBackgroundColor = useThemeColor({ light: '#F0F0F0', dark: '#2A2A2A' }, 'background');
   const backgroundColor = isUser
     ? Colors[colorScheme ?? 'light'].tint
-    : useThemeColor({ light: '#F0F0F0', dark: '#2A2A2A' }, 'background');
+    : botBackgroundColor;
   const textColor = isUser ? '#fff' : Colors[colorScheme ?? 'light'].text;
 
   return (
