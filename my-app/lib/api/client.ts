@@ -156,6 +156,8 @@ class ApiClient {
           vertexai_auth_mode: oaiSettings.vertexai_auth_mode,
           vertexai_model: oaiSettings.vertexai_model,
           vertexai_region: oaiSettings.vertexai_region,
+          show_thoughts: oaiSettings.show_thoughts,
+          reasoning_effort: oaiSettings.reasoning_effort,
         });
       }
       
@@ -169,6 +171,10 @@ class ApiClient {
       const serverSettings = {
         ...settings,
         ...oaiSettings, // oai_settings의 설정들을 최상위로 병합
+        // show_thoughts를 include_reasoning으로 매핑 (웹에서는 show_thoughts를 사용)
+        include_reasoning: oaiSettings.show_thoughts !== undefined 
+          ? Boolean(oaiSettings.show_thoughts) 
+          : undefined,
       };
       
       useAppSettingsStore.getState().setServerSettings(serverSettings);
