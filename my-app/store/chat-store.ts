@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { apiClient } from '@/lib/api/client';
 import { useAppSettingsStore } from './app-settings-store';
+import { useCharacterStore } from './character-store';
 
 /**
  * 서버에서 받는 채팅 메시지 타입
@@ -122,8 +123,96 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           })
         : [];
       
+      // 새 채팅인 경우 (메시지가 없거나 비어있음) character의 첫 메시지를 서버에만 저장
+      // (프롬프트에는 포함되지만 앱 화면에는 표시하지 않음)
+      const isNewChat = messagesToConvert.length === 0 || 
+        messagesToConvert.every(msg => !msg.mes || !msg.mes.trim() || msg.is_system);
+      
+      if (isNewChat) {
+        // Character 정보 가져오기 (API로 직접 가져오기)
+        try {
+          const characterData = await apiClient.post<any>('/api/characters/get', {
+            avatar_url: characterId,
+          });
+          
+          if (characterData && characterData.data && characterData.data.first_mes) {
+            const firstMes = characterData.data.first_mes;
+            const characterName = characterData.data.name || characterData.name || 'Character';
+            
+            // Character의 첫 메시지를 서버에만 저장 (프롬프트에 포함되도록)
+            // 앱 화면에는 표시하지 않으므로 로컬 messages에는 추가하지 않음
+            try {
+              const userName = useAppSettingsStore.getState().settings.userName || 'You';
+              const firstMessageForServer = {
+                name: characterName,
+                is_user: false,
+                mes: firstMes,
+                send_date: new Date().toISOString(),
+                extra: {},
+              };
+              const serverChatData = [
+                {
+                  chat_metadata: {},
+                  user_name: userName,
+                  character_name: characterName,
+                },
+                firstMessageForServer,
+              ];
+              await apiClient.saveChat(characterId, fileName, serverChatData);
+            } catch (saveError) {
+              console.error('[ChatStore] 첫 메시지 저장 실패:', saveError);
+              // 저장 실패해도 계속 진행
+            }
+            
+            // 앱 화면에는 빈 메시지 배열로 설정 (첫 메시지는 표시하지 않음)
+            set({ 
+              messages: [],
+              currentChatId: fileName,
+              isLoading: false 
+            });
+            
+            return;
+          }
+        } catch (charError) {
+          console.error('[ChatStore] Character 정보 가져오기 실패:', charError);
+          // Character 정보 가져오기 실패해도 계속 진행
+        }
+      }
+      
+      // 첫 번째 assistant 메시지가 character의 첫 메시지인지 확인하고 필터링
+      // (프롬프트에는 포함되지만 앱 화면에는 표시하지 않음)
+      let filteredMessages = messagesToConvert;
+      
+      if (messagesToConvert.length > 0) {
+        // 첫 번째 메시지가 assistant 메시지인지 확인
+        const firstMessage = messagesToConvert[0];
+        if (!firstMessage.is_user && (firstMessage.name || firstMessage.character_name)) {
+          // Character 정보 가져와서 first_mes와 비교
+          try {
+            const characterData = await apiClient.post<any>('/api/characters/get', {
+              avatar_url: characterId,
+            });
+            
+            if (characterData && characterData.data && characterData.data.first_mes) {
+              const firstMes = characterData.data.first_mes.trim();
+              const firstMessageText = (firstMessage.mes || '').trim();
+              
+              // 첫 메시지가 character의 first_mes와 일치하거나 비슷하면 제외
+              if (firstMes && 
+                  (firstMessageText === firstMes || 
+                   firstMessageText.startsWith(firstMes.substring(0, Math.min(20, firstMes.length))))) {
+                filteredMessages = messagesToConvert.slice(1);
+              }
+            }
+          } catch (charError) {
+            // Character 정보 가져오기 실패해도 계속 진행 (필터링 안 함)
+            console.error('[ChatStore] Character 정보 가져오기 실패 (필터링용):', charError);
+          }
+        }
+      }
+      
       // 서버 메시지를 앱 메시지로 변환
-      const appMessages = messagesToConvert.map((msg, index) => 
+      const appMessages = filteredMessages.map((msg, index) => 
         convertServerMessageToAppMessage(msg, index)
       );
       

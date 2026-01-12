@@ -233,7 +233,27 @@ class ApiClient {
       );
 
       if (!response.ok) {
-        throw new Error(`API 요청 실패: ${response.status} ${response.statusText}`);
+        // 에러 응답 본문 확인
+        let errorMessage = `API 요청 실패: ${response.status} ${response.statusText}`;
+        try {
+          const errorData = await response.text();
+          if (errorData) {
+            try {
+              const errorJson = JSON.parse(errorData);
+              errorMessage = errorJson.error || errorJson.message || errorMessage;
+            } catch {
+              // JSON 파싱 실패 시 텍스트 그대로 사용 (너무 길면 자름)
+              if (errorData.length < 200) {
+                errorMessage = `${errorMessage}: ${errorData}`;
+              } else {
+                errorMessage = `${errorMessage}: ${errorData.substring(0, 200)}...`;
+              }
+            }
+          }
+        } catch {
+          // 응답 본문 읽기 실패 시 무시
+        }
+        throw new Error(errorMessage);
       }
 
       return response.json();

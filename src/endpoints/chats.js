@@ -1117,6 +1117,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         const charPersonality = characterData.data.personality || '';
         const scenario = characterData.data.scenario || '';
         const name2 = characterData.data.name || '';
+        const charFirstMes = characterData.data.first_mes || '';
+        const alternateGreetings = characterData.data.alternate_greetings || [];
         const worldInfoName = characterData.data.extensions?.world || characterData.data.world || '';
 
         // Load world info if character has one
@@ -1215,6 +1217,9 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             mainPrompt = `Write ${name2}'s next reply in a fictional chat between ${name2} and ${name1}.`;
         }
         
+        // Get new chat prompt from oai_settings
+        const newChatPrompt = oaiSettings.new_chat_prompt || '[Start a new Chat]';
+        
         // Get Summary settings
         const memorySettings = extensionSettings.memory || {};
         const summaryTemplate = memorySettings.template || '[Summary: {{summary}}]';
@@ -1289,21 +1294,63 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             });
         }
 
-        // Add chat history (convert from chat format to message format)
+        // Check if this is the first message (no chat history or empty chat history)
+        const isFirstMessage = !chatHistory || chatHistory.length === 0 || 
+            chatHistory.every(item => !item.mes || !item.mes.trim() || item.is_system);
+        
+        // Always add [Start a new Chat] at the start of chat history (web behavior)
+        const newChatMessage = newChatPrompt
+            .replace(/\{\{char\}\}/g, name2)
+            .replace(/\{\{user\}\}/g, name1)
+            .replace(/\{\{charIfNotGroup\}\}/g, name2);
+        
+        // Add character's first message if this is the first message
+        // (In web/app, the first message is saved to chat history, so for existing chats
+        // it will already be in chatHistory. This is only needed for the very first message.)
+        if (isFirstMessage && charFirstMes) {
+            // Pick random greeting if alternate greetings exist
+            let firstMessageText = charFirstMes;
+            if (Array.isArray(alternateGreetings) && alternateGreetings.length > 0) {
+                const allGreetings = [charFirstMes, ...alternateGreetings].filter(x => x);
+                firstMessageText = allGreetings[Math.floor(Math.random() * allGreetings.length)];
+            }
+            
+            // Replace macros in first message
+            firstMessageText = firstMessageText
+                .replace(/\{\{char\}\}/g, name2)
+                .replace(/\{\{user\}\}/g, name1)
+                .replace(/\{\{charIfNotGroup\}\}/g, name2);
+            
+            messages.push({
+                role: 'assistant',
+                content: firstMessageText.trim()
+            });
+        }
+        
+        // Add [Start a new Chat] system message (always added, before chat history)
+        messages.push({
+            role: 'system',
+            content: newChatMessage,
+            identifier: 'newMainChat'
+        });
+        
+        // Add existing chat history (convert from chat format to message format)
         // Chat format: { name, mes, is_user, ... }
         // Message format: { role: 'user' | 'assistant', content: string }
-        for (const chatItem of chatHistory) {
-            if (chatItem.mes && chatItem.mes.trim()) {
-                if (chatItem.is_user || chatItem.name === name1) {
-                    messages.push({
-                        role: 'user',
-                        content: chatItem.mes
-                    });
-                } else if (chatItem.name === name2 || chatItem.character_name === name2) {
-                    messages.push({
-                        role: 'assistant',
-                        content: chatItem.mes
-                    });
+        if (!isFirstMessage) {
+            for (const chatItem of chatHistory) {
+                if (chatItem.mes && chatItem.mes.trim() && !chatItem.is_system) {
+                    if (chatItem.is_user || chatItem.name === name1) {
+                        messages.push({
+                            role: 'user',
+                            content: chatItem.mes
+                        });
+                    } else if (chatItem.name === name2 || chatItem.character_name === name2) {
+                        messages.push({
+                            role: 'assistant',
+                            content: chatItem.mes
+                        });
+                    }
                 }
             }
         }
