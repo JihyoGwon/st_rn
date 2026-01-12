@@ -69,6 +69,11 @@ export interface PrepareMessagesResponse {
   metadata?: {
     character_name?: string;
     user_name?: string;
+    summary?: {
+      exists: boolean;
+      generating: boolean;
+      length: number;
+    };
     [key: string]: unknown;
   };
 }

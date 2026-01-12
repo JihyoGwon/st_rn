@@ -458,7 +458,39 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         const chatFilePath = path.join(request.user.directories.chats, cardName, sanitize(chatFileName));
 
         if (Array.isArray(chatData)) {
-            await trySaveChat(chatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);
+            // 기존 채팅 히스토리에서 extra 필드 보존 (summary 등)
+            let mergedChatData = chatData;
+            if (fs.existsSync(chatFilePath)) {
+                const existingChatData = getChatData(chatFilePath);
+                if (existingChatData && existingChatData.length > 0) {
+                    // 기존 채팅 데이터의 extra 필드를 새 데이터에 병합
+                    mergedChatData = chatData.map((newItem, index) => {
+                        // 첫 번째 항목은 메타데이터이므로 그대로 유지
+                        if (index === 0) {
+                            return newItem;
+                        }
+                        
+                        // 기존 채팅에서 같은 인덱스의 항목 찾기 (메타데이터 제외)
+                        const existingIndex = index - 1;
+                        if (existingIndex < existingChatData.length && existingChatData[existingIndex]) {
+                            const existingItem = existingChatData[existingIndex];
+                            // extra 필드가 있으면 병합
+                            if (existingItem.extra && Object.keys(existingItem.extra).length > 0) {
+                                return {
+                                    ...newItem,
+                                    extra: {
+                                        ...existingItem.extra,
+                                        ...(newItem.extra || {}) // 새 데이터의 extra도 병합
+                                    }
+                                };
+                            }
+                        }
+                        return newItem;
+                    });
+                }
+            }
+            
+            await trySaveChat(mergedChatData, chatFilePath, request.body.force, handle, cardName, request.user.directories.backups);
             return response.send({ ok: true });
         } else {
             return response.status(400).send({ error: 'The request\'s body.chat is not an array.' });
@@ -1161,14 +1193,33 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 chatHistory = getChatData(chatFilePath);
                 
                 // Find the latest summary from chat history (stored in extra.memory)
+                console.log('[prepare-messages] Summary 검색 시작:', {
+                    chatHistoryLength: chatHistory.length,
+                    chatFilePath
+                });
+                
                 for (let i = chatHistory.length - 1; i >= 0; i--) {
                     const chatItem = chatHistory[i];
+                    
+                    // 더 자세한 디버깅
+                    if (i >= chatHistory.length - 5) {
+                        console.log(`[prepare-messages] Index ${i} 확인:`, {
+                            hasExtra: !!chatItem.extra,
+                            extraType: typeof chatItem.extra,
+                            extraKeys: chatItem.extra ? Object.keys(chatItem.extra) : [],
+                            hasMemory: !!(chatItem.extra && chatItem.extra.memory),
+                            memoryType: chatItem.extra?.memory ? typeof chatItem.extra.memory : 'none',
+                            memoryValue: chatItem.extra?.memory ? String(chatItem.extra.memory).substring(0, 50) : 'none'
+                        });
+                    }
+                    
                     if (chatItem.extra && typeof chatItem.extra === 'object' && chatItem.extra.memory) {
                         summary = chatItem.extra.memory;
                         console.log(`[prepare-messages] Summary 로드됨 (index ${i}):`, {
                             summaryLength: summary.length,
                             summaryPreview: summary.substring(0, 100),
-                            chatItemExtra: chatItem.extra
+                            chatItemExtra: chatItem.extra,
+                            extraKeys: Object.keys(chatItem.extra)
                         });
                         break;
                     }
@@ -1176,15 +1227,26 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 
                 // 디버깅: Summary가 없는 경우 채팅 히스토리 확인
                 if (!summary) {
+                    // 전체 채팅 히스토리에서 extra.memory가 있는 항목 찾기
+                    const itemsWithMemory = chatHistory
+                        .map((item, idx) => ({ index: idx, item, hasMemory: !!(item.extra && item.extra.memory) }))
+                        .filter(x => x.hasMemory);
+                    
                     console.log('[prepare-messages] Summary를 찾을 수 없음. 채팅 히스토리 확인:', {
                         chatHistoryLength: chatHistory.length,
                         hasExtraFields: chatHistory.some(item => item.extra),
                         extraFieldsCount: chatHistory.filter(item => item.extra).length,
+                        itemsWithMemoryCount: itemsWithMemory.length,
+                        itemsWithMemory: itemsWithMemory.map(x => ({
+                            index: x.index,
+                            memoryPreview: String(x.item.extra.memory).substring(0, 50)
+                        })),
                         sampleItems: chatHistory.slice(-5).map((item, idx) => ({
                             index: chatHistory.length - 5 + idx,
                             hasExtra: !!item.extra,
                             extraKeys: item.extra ? Object.keys(item.extra) : [],
-                            hasMemory: !!(item.extra && item.extra.memory)
+                            hasMemory: !!(item.extra && item.extra.memory),
+                            extraValue: item.extra ? JSON.stringify(item.extra).substring(0, 100) : 'none'
                         }))
                     });
                 }
@@ -1412,6 +1474,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                                      memorySettings.promptInterval > 0 &&
                                      chatHistory.length >= memorySettings.promptInterval;
         
+        let summaryGenerating = false;
         if (shouldGenerateSummary && !summary) {
             // Count messages since last summary
             let messagesSinceLastSummary = 0;
@@ -1426,21 +1489,48 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 promptInterval: memorySettings.promptInterval,
                 messagesSinceLastSummary,
                 shouldGenerate: messagesSinceLastSummary >= memorySettings.promptInterval,
-                chatHistoryLength: chatHistory.length
+                chatHistoryLength: chatHistory.length,
+                hasSummary: !!summary
             });
             
             // Generate summary if enough messages
             if (messagesSinceLastSummary >= memorySettings.promptInterval) {
+                summaryGenerating = true;
+                console.log('[prepare-messages] Summary 생성 시작:', {
+                    chatId: chat_id,
+                    characterFileName,
+                    messagesSinceLastSummary,
+                    promptInterval: memorySettings.promptInterval
+                });
+                
                 try {
                     // Generate summary asynchronously (don't block the response)
                     // Pass the full request object to access session and CSRF token
                     generateSummaryForChat(request.user.directories, characterFileName, chat_id, memorySettings, name1, name2, request)
+                        .then(generatedSummary => {
+                            if (generatedSummary) {
+                                console.log('[prepare-messages] Summary 생성 완료:', {
+                                    summaryLength: generatedSummary.length,
+                                    summaryPreview: generatedSummary.substring(0, 100)
+                                });
+                            } else {
+                                console.warn('[prepare-messages] Summary 생성 실패: generatedSummary가 null입니다.');
+                            }
+                        })
                         .catch(error => {
                             console.error('[prepare-messages] Failed to generate summary:', error);
+                            console.error('[prepare-messages] Error stack:', error.stack);
                         });
                 } catch (error) {
                     console.error('[prepare-messages] Error starting summary generation:', error);
+                    console.error('[prepare-messages] Error stack:', error.stack);
                 }
+            } else {
+                console.log('[prepare-messages] Summary 생성 조건 미충족:', {
+                    messagesSinceLastSummary,
+                    promptInterval: memorySettings.promptInterval,
+                    needMore: memorySettings.promptInterval - messagesSinceLastSummary
+                });
             }
         }
         
@@ -1461,7 +1551,12 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 character_name: name2,
                 user_name: name1,
                 chat_id: chat_id || null,
-                token_count: 0 // TODO: Calculate actual token count
+                token_count: 0, // TODO: Calculate actual token count
+                summary: {
+                    exists: !!summary,
+                    generating: summaryGenerating,
+                    length: summary ? summary.length : 0
+                }
             }
         });
     } catch (error) {
@@ -1621,7 +1716,10 @@ router.post('/summarize', validateAvatarUrlMiddleware, async function (request, 
  * @returns {Promise<string|null>} Generated summary or null
  */
 async function generateSummaryForChat(directories, characterFileName, chatId, memorySettings, name1, name2, request = null) {
+    console.log('[generateSummaryForChat] 시작:', { chatId, characterFileName });
+    
     if (!chatId) {
+        console.warn('[generateSummaryForChat] chatId가 없습니다.');
         return null;
     }
     
@@ -1638,8 +1736,11 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
         
         const chatHistory = getChatData(chatFilePath);
         if (!chatHistory || chatHistory.length === 0) {
+            console.warn('[generateSummaryForChat] Chat history가 비어있습니다.');
             return null;
         }
+        
+        console.log('[generateSummaryForChat] Chat history 로드됨:', { length: chatHistory.length });
         
         // Find the latest summary index
         let latestSummaryIndex = -1;
@@ -1719,7 +1820,16 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             }
         }
         
+        console.log('[generateSummaryForChat] 메시지 수집 완료:', {
+            messagesToSummarizeLength: messagesToSummarize.length,
+            startIndex,
+            endIndex,
+            latestSummaryIndex,
+            isRawMode
+        });
+        
         if (messagesToSummarize.length === 0) {
+            console.warn('[generateSummaryForChat] 요약할 메시지가 없습니다.');
             return null;
         }
         
@@ -1780,21 +1890,59 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
         }
         
         // Call chat completion API via HTTP request
+        console.log('[generateSummaryForChat] API 호출 준비:', {
+            summaryMessagesLength: summaryMessages.length,
+            hasRequest: !!request
+        });
+        
         try {
             const nodeFetch = (await import('node-fetch')).default;
             const baseUrl = `http://localhost:${process.env.PORT || 8001}`;
             const generateUrl = `${baseUrl}/api/backends/chat-completions/generate`;
             
             // Prepare request body for chat completion
+            // memorySettings.source가 'main'이면 메인 API 사용
             const chatCompletionSource = serverSettings.chat_completion_source || 'openai';
+            
+            // chatCompletionSource에 따라 적절한 모델 선택
+            let selectedModel;
+            let selectedTemperature;
+            let selectedMaxTokens;
+            
+            if (chatCompletionSource === 'google' || chatCompletionSource === 'vertexai') {
+                selectedModel = serverSettings.vertexai_model || serverSettings.google_model || 'gemini-2.5-flash';
+                selectedTemperature = serverSettings.vertexai_temperature || 0.7;
+                selectedMaxTokens = serverSettings.vertexai_max_tokens || 500;
+            } else if (chatCompletionSource === 'openai') {
+                selectedModel = serverSettings.openai_model || 'gpt-3.5-turbo';
+                selectedTemperature = serverSettings.openai_temperature || 0.7;
+                selectedMaxTokens = serverSettings.openai_max_tokens || 500;
+            } else if (chatCompletionSource === 'claude') {
+                selectedModel = serverSettings.claude_model || 'claude-sonnet-4-5';
+                selectedTemperature = serverSettings.claude_temperature || 0.7;
+                selectedMaxTokens = serverSettings.claude_max_tokens || 500;
+            } else {
+                // 기본값
+                selectedModel = serverSettings.openai_model || 'gpt-3.5-turbo';
+                selectedTemperature = serverSettings.openai_temperature || 0.7;
+                selectedMaxTokens = serverSettings.openai_max_tokens || 500;
+            }
+            
             const requestBody = {
                 messages: summaryMessages,
                 chat_completion_source: chatCompletionSource,
-                model: serverSettings.openai_model || serverSettings.vertexai_model || 'gpt-3.5-turbo',
-                temperature: serverSettings.openai_temperature || serverSettings.vertexai_temperature || 0.7,
-                max_tokens: memorySettings.overrideResponseLength || serverSettings.openai_max_tokens || serverSettings.vertexai_max_tokens || 500,
+                model: selectedModel,
+                temperature: selectedTemperature,
+                max_tokens: memorySettings.overrideResponseLength || selectedMaxTokens,
                 stream: false,
             };
+            
+            console.log('[generateSummaryForChat] API 요청:', {
+                url: generateUrl,
+                chatCompletionSource,
+                model: requestBody.model,
+                messagesCount: requestBody.messages.length
+            });
             
             // Add Vertex AI specific settings if using Vertex AI
             if (chatCompletionSource === 'google' || chatCompletionSource === 'vertexai') {
@@ -1803,9 +1951,6 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 }
                 if (serverSettings.vertexai_region !== undefined) {
                     requestBody.vertexai_region = serverSettings.vertexai_region;
-                }
-                if (serverSettings.vertexai_model !== undefined) {
-                    requestBody.model = serverSettings.vertexai_model;
                 }
                 // Add reasoning settings for Gemini models
                 if (serverSettings.reasoning_effort !== undefined) {
@@ -1879,6 +2024,8 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 body: JSON.stringify(requestBody),
             });
             
+            console.log('[generateSummaryForChat] API 응답 받음:', { status: response.status, ok: response.ok });
+            
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('[generateSummaryForChat] Chat completion API error:', response.status, errorText);
@@ -1896,6 +2043,11 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             } else if (typeof result === 'string') {
                 generatedSummary = result;
             }
+            
+            console.log('[generateSummaryForChat] Summary 추출:', {
+                hasGeneratedSummary: !!generatedSummary,
+                summaryLength: generatedSummary ? generatedSummary.length : 0
+            });
             
             if (!generatedSummary || !generatedSummary.trim()) {
                 console.warn('[generateSummaryForChat] Empty summary received from API');
@@ -1929,14 +2081,34 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 const cardName = characterDirName;
                 await trySaveChat(chatHistory, chatFilePath, false, handle, cardName, directories.backups);
                 
+                // Verify that summary was saved correctly by reading the file back
+                const savedChatHistory = getChatData(chatFilePath);
+                const savedItem = savedChatHistory[saveIndex];
+                const savedMemory = savedItem?.extra?.memory;
+                
                 console.log(`[generateSummaryForChat] Summary saved at index ${saveIndex}:`, {
                     saveIndex,
                     chatHistoryLength: chatHistory.length,
                     summaryLength: generatedSummary.length,
                     summaryPreview: generatedSummary.substring(0, 100),
                     savedExtra: chatHistory[saveIndex].extra,
-                    filePath: chatFilePath
+                    filePath: chatFilePath,
+                    verification: {
+                        savedChatHistoryLength: savedChatHistory.length,
+                        savedItemExists: !!savedItem,
+                        savedMemoryExists: !!savedMemory,
+                        savedMemoryLength: savedMemory ? savedMemory.length : 0,
+                        savedMemoryMatch: savedMemory === generatedSummary
+                    }
                 });
+                
+                if (!savedMemory || savedMemory !== generatedSummary) {
+                    console.error('[generateSummaryForChat] Summary 저장 검증 실패:', {
+                        expected: generatedSummary.substring(0, 50),
+                        actual: savedMemory ? savedMemory.substring(0, 50) : 'null'
+                    });
+                }
+                
                 return generatedSummary;
             } else {
                 console.warn('[generateSummaryForChat] Cannot save summary: invalid save index');
@@ -1945,11 +2117,13 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             
         } catch (error) {
             console.error('[generateSummaryForChat] Error calling chat completion API:', error);
+            console.error('[generateSummaryForChat] Error stack:', error.stack);
             return null;
         }
         
     } catch (error) {
         console.error('[generateSummaryForChat] Error:', error);
+        console.error('[generateSummaryForChat] Error stack:', error.stack);
         return null;
     }
 }

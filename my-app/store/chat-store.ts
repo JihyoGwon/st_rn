@@ -276,6 +276,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         throw new Error('메시지 준비 실패');
       }
       
+      // Summary 상태 확인 및 로깅
+      const summaryInfo = prepareResult.metadata?.summary;
+      if (summaryInfo) {
+        console.log('[ChatStore] Summary 상태:', {
+          exists: summaryInfo.exists,
+          generating: summaryInfo.generating,
+          length: summaryInfo.length
+        });
+        
+        // Summary가 생성 중이면 다음 요청에서 summary가 반영될 수 있음을 알림
+        if (summaryInfo.generating) {
+          console.log('[ChatStore] Summary 생성 중... 다음 메시지에서 반영될 예정입니다.');
+        }
+        
+        // Summary가 존재하는지 확인 (프롬프트에 포함되었는지 확인)
+        const hasSummaryInPrompt = prepareResult.generate_data?.messages?.some(
+          (msg: ChatCompletionMessage) => msg.identifier === 'summary'
+        );
+        if (summaryInfo.exists && !hasSummaryInPrompt) {
+          console.warn('[ChatStore] Summary가 존재하지만 프롬프트에 포함되지 않았습니다.');
+        } else if (summaryInfo.exists && hasSummaryInPrompt) {
+          console.log('[ChatStore] Summary가 프롬프트에 포함되었습니다.');
+        }
+      }
+      
       // 3. AI 응답 생성 (비스트리밍)
       // 서버 설정에서 동적으로 가져오기
       const serverSettings = useAppSettingsStore.getState().settings.serverSettings || {};
