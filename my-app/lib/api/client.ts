@@ -196,13 +196,7 @@ class ApiClient {
       
       // extension_settings 확인 (Summary 설정 등)
       const extensionSettings = settings.extension_settings || {};
-      if (extensionSettings.memory) {
-        console.log('[API] Summary 설정 동기화:', {
-          promptInterval: extensionSettings.memory.promptInterval,
-          source: extensionSettings.memory.source,
-          template: extensionSettings.memory.template
-        });
-      }
+      // Summary 설정은 서버 설정에 저장되지만, 로그는 제거 (prepare-messages 응답에서 더 유용한 정보 제공)
       
       // 앱 설정 동기화
       if (settings.mobile_app) {

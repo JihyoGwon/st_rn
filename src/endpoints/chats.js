@@ -1193,62 +1193,13 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 chatHistory = getChatData(chatFilePath);
                 
                 // Find the latest summary from chat history (stored in extra.memory)
-                console.log('[prepare-messages] Summary 검색 시작:', {
-                    chatHistoryLength: chatHistory.length,
-                    chatFilePath
-                });
-                
                 for (let i = chatHistory.length - 1; i >= 0; i--) {
                     const chatItem = chatHistory[i];
-                    
-                    // 더 자세한 디버깅
-                    if (i >= chatHistory.length - 5) {
-                        console.log(`[prepare-messages] Index ${i} 확인:`, {
-                            hasExtra: !!chatItem.extra,
-                            extraType: typeof chatItem.extra,
-                            extraKeys: chatItem.extra ? Object.keys(chatItem.extra) : [],
-                            hasMemory: !!(chatItem.extra && chatItem.extra.memory),
-                            memoryType: chatItem.extra?.memory ? typeof chatItem.extra.memory : 'none',
-                            memoryValue: chatItem.extra?.memory ? String(chatItem.extra.memory).substring(0, 50) : 'none'
-                        });
-                    }
-                    
                     if (chatItem.extra && typeof chatItem.extra === 'object' && chatItem.extra.memory) {
                         summary = chatItem.extra.memory;
-                        console.log(`[prepare-messages] Summary 로드됨 (index ${i}):`, {
-                            summaryLength: summary.length,
-                            summaryPreview: summary.substring(0, 100),
-                            chatItemExtra: chatItem.extra,
-                            extraKeys: Object.keys(chatItem.extra)
-                        });
+                        console.log(`[prepare-messages] Summary 로드됨 (index ${i}, 길이: ${summary.length})`);
                         break;
                     }
-                }
-                
-                // 디버깅: Summary가 없는 경우 채팅 히스토리 확인
-                if (!summary) {
-                    // 전체 채팅 히스토리에서 extra.memory가 있는 항목 찾기
-                    const itemsWithMemory = chatHistory
-                        .map((item, idx) => ({ index: idx, item, hasMemory: !!(item.extra && item.extra.memory) }))
-                        .filter(x => x.hasMemory);
-                    
-                    console.log('[prepare-messages] Summary를 찾을 수 없음. 채팅 히스토리 확인:', {
-                        chatHistoryLength: chatHistory.length,
-                        hasExtraFields: chatHistory.some(item => item.extra),
-                        extraFieldsCount: chatHistory.filter(item => item.extra).length,
-                        itemsWithMemoryCount: itemsWithMemory.length,
-                        itemsWithMemory: itemsWithMemory.map(x => ({
-                            index: x.index,
-                            memoryPreview: String(x.item.extra.memory).substring(0, 50)
-                        })),
-                        sampleItems: chatHistory.slice(-5).map((item, idx) => ({
-                            index: chatHistory.length - 5 + idx,
-                            hasExtra: !!item.extra,
-                            extraKeys: item.extra ? Object.keys(item.extra) : [],
-                            hasMemory: !!(item.extra && item.extra.memory),
-                            extraValue: item.extra ? JSON.stringify(item.extra).substring(0, 100) : 'none'
-                        }))
-                    });
                 }
             }
         }
@@ -1485,52 +1436,25 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 messagesSinceLastSummary++;
             }
             
-            console.log('[prepare-messages] Summary 생성 조건 확인:', {
-                promptInterval: memorySettings.promptInterval,
-                messagesSinceLastSummary,
-                shouldGenerate: messagesSinceLastSummary >= memorySettings.promptInterval,
-                chatHistoryLength: chatHistory.length,
-                hasSummary: !!summary
-            });
-            
             // Generate summary if enough messages
             if (messagesSinceLastSummary >= memorySettings.promptInterval) {
                 summaryGenerating = true;
-                console.log('[prepare-messages] Summary 생성 시작:', {
-                    chatId: chat_id,
-                    characterFileName,
-                    messagesSinceLastSummary,
-                    promptInterval: memorySettings.promptInterval
-                });
+                console.log(`[prepare-messages] Summary 생성 시작 (메시지 수: ${messagesSinceLastSummary}/${memorySettings.promptInterval})`);
                 
                 try {
                     // Generate summary asynchronously (don't block the response)
-                    // Pass the full request object to access session and CSRF token
                     generateSummaryForChat(request.user.directories, characterFileName, chat_id, memorySettings, name1, name2, request)
                         .then(generatedSummary => {
                             if (generatedSummary) {
-                                console.log('[prepare-messages] Summary 생성 완료:', {
-                                    summaryLength: generatedSummary.length,
-                                    summaryPreview: generatedSummary.substring(0, 100)
-                                });
-                            } else {
-                                console.warn('[prepare-messages] Summary 생성 실패: generatedSummary가 null입니다.');
+                                console.log(`[prepare-messages] Summary 생성 완료 (길이: ${generatedSummary.length})`);
                             }
                         })
                         .catch(error => {
-                            console.error('[prepare-messages] Failed to generate summary:', error);
-                            console.error('[prepare-messages] Error stack:', error.stack);
+                            console.error('[prepare-messages] Summary 생성 실패:', error.message);
                         });
                 } catch (error) {
-                    console.error('[prepare-messages] Error starting summary generation:', error);
-                    console.error('[prepare-messages] Error stack:', error.stack);
+                    console.error('[prepare-messages] Summary 생성 시작 실패:', error.message);
                 }
-            } else {
-                console.log('[prepare-messages] Summary 생성 조건 미충족:', {
-                    messagesSinceLastSummary,
-                    promptInterval: memorySettings.promptInterval,
-                    needMore: memorySettings.promptInterval - messagesSinceLastSummary
-                });
             }
         }
         
@@ -1716,10 +1640,7 @@ router.post('/summarize', validateAvatarUrlMiddleware, async function (request, 
  * @returns {Promise<string|null>} Generated summary or null
  */
 async function generateSummaryForChat(directories, characterFileName, chatId, memorySettings, name1, name2, request = null) {
-    console.log('[generateSummaryForChat] 시작:', { chatId, characterFileName });
-    
     if (!chatId) {
-        console.warn('[generateSummaryForChat] chatId가 없습니다.');
         return null;
     }
     
@@ -1730,17 +1651,14 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
         const chatFilePath = path.join(chatDirectory, sanitize(chatFileName));
         
         if (!fs.existsSync(chatFilePath)) {
-            console.warn('[generateSummaryForChat] Chat file not found:', chatFilePath);
+            console.warn('[generateSummaryForChat] Chat file not found');
             return null;
         }
         
         const chatHistory = getChatData(chatFilePath);
         if (!chatHistory || chatHistory.length === 0) {
-            console.warn('[generateSummaryForChat] Chat history가 비어있습니다.');
             return null;
         }
-        
-        console.log('[generateSummaryForChat] Chat history 로드됨:', { length: chatHistory.length });
         
         // Find the latest summary index
         let latestSummaryIndex = -1;
@@ -1820,16 +1738,7 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             }
         }
         
-        console.log('[generateSummaryForChat] 메시지 수집 완료:', {
-            messagesToSummarizeLength: messagesToSummarize.length,
-            startIndex,
-            endIndex,
-            latestSummaryIndex,
-            isRawMode
-        });
-        
         if (messagesToSummarize.length === 0) {
-            console.warn('[generateSummaryForChat] 요약할 메시지가 없습니다.');
             return null;
         }
         
@@ -1890,11 +1799,6 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
         }
         
         // Call chat completion API via HTTP request
-        console.log('[generateSummaryForChat] API 호출 준비:', {
-            summaryMessagesLength: summaryMessages.length,
-            hasRequest: !!request
-        });
-        
         try {
             const nodeFetch = (await import('node-fetch')).default;
             const baseUrl = `http://localhost:${process.env.PORT || 8001}`;
@@ -1936,13 +1840,6 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 max_tokens: memorySettings.overrideResponseLength || selectedMaxTokens,
                 stream: false,
             };
-            
-            console.log('[generateSummaryForChat] API 요청:', {
-                url: generateUrl,
-                chatCompletionSource,
-                model: requestBody.model,
-                messagesCount: requestBody.messages.length
-            });
             
             // Add Vertex AI specific settings if using Vertex AI
             if (chatCompletionSource === 'google' || chatCompletionSource === 'vertexai') {
@@ -2024,11 +1921,9 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 body: JSON.stringify(requestBody),
             });
             
-            console.log('[generateSummaryForChat] API 응답 받음:', { status: response.status, ok: response.ok });
-            
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('[generateSummaryForChat] Chat completion API error:', response.status, errorText);
+                console.error(`[generateSummaryForChat] API 오류 (${response.status}):`, errorText.substring(0, 100));
                 return null;
             }
             
@@ -2043,11 +1938,6 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             } else if (typeof result === 'string') {
                 generatedSummary = result;
             }
-            
-            console.log('[generateSummaryForChat] Summary 추출:', {
-                hasGeneratedSummary: !!generatedSummary,
-                summaryLength: generatedSummary ? generatedSummary.length : 0
-            });
             
             if (!generatedSummary || !generatedSummary.trim()) {
                 console.warn('[generateSummaryForChat] Empty summary received from API');
@@ -2086,27 +1976,10 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 const savedItem = savedChatHistory[saveIndex];
                 const savedMemory = savedItem?.extra?.memory;
                 
-                console.log(`[generateSummaryForChat] Summary saved at index ${saveIndex}:`, {
-                    saveIndex,
-                    chatHistoryLength: chatHistory.length,
-                    summaryLength: generatedSummary.length,
-                    summaryPreview: generatedSummary.substring(0, 100),
-                    savedExtra: chatHistory[saveIndex].extra,
-                    filePath: chatFilePath,
-                    verification: {
-                        savedChatHistoryLength: savedChatHistory.length,
-                        savedItemExists: !!savedItem,
-                        savedMemoryExists: !!savedMemory,
-                        savedMemoryLength: savedMemory ? savedMemory.length : 0,
-                        savedMemoryMatch: savedMemory === generatedSummary
-                    }
-                });
-                
-                if (!savedMemory || savedMemory !== generatedSummary) {
-                    console.error('[generateSummaryForChat] Summary 저장 검증 실패:', {
-                        expected: generatedSummary.substring(0, 50),
-                        actual: savedMemory ? savedMemory.substring(0, 50) : 'null'
-                    });
+                if (savedMemory && savedMemory === generatedSummary) {
+                    console.log(`[generateSummaryForChat] Summary 저장 완료 (index ${saveIndex}, 길이: ${generatedSummary.length})`);
+                } else {
+                    console.error(`[generateSummaryForChat] Summary 저장 검증 실패 (index ${saveIndex})`);
                 }
                 
                 return generatedSummary;
@@ -2116,14 +1989,12 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             }
             
         } catch (error) {
-            console.error('[generateSummaryForChat] Error calling chat completion API:', error);
-            console.error('[generateSummaryForChat] Error stack:', error.stack);
+            console.error('[generateSummaryForChat] API 호출 실패:', error.message);
             return null;
         }
         
     } catch (error) {
-        console.error('[generateSummaryForChat] Error:', error);
-        console.error('[generateSummaryForChat] Error stack:', error.stack);
+        console.error('[generateSummaryForChat] 오류:', error.message);
         return null;
     }
 }
