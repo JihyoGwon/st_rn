@@ -22,7 +22,19 @@ function fetchWithTimeout(
   timeout: number = 10000 // 10초
 ): Promise<Response> {
   return Promise.race([
-    fetch(url, options),
+    fetch(url, options).catch((error) => {
+      // 네트워크 에러를 더 자세히 로깅
+      const errorInfo = {
+        url,
+        message: error?.message || String(error),
+        name: error?.name || 'UnknownError',
+        stack: error?.stack || 'No stack trace',
+        toString: error?.toString?.() || String(error),
+      };
+      console.error('[API] Fetch 에러 상세:', JSON.stringify(errorInfo, null, 2));
+      console.error('[API] Fetch 에러 원본:', error);
+      throw error;
+    }),
     new Promise<Response>((_, reject) =>
       setTimeout(() => reject(new Error('요청 시간 초과')), timeout)
     ),
@@ -66,6 +78,11 @@ class ApiClient {
     try {
       const baseUrl = getBaseUrl();
       console.log('[API] CSRF 토큰 요청:', `${baseUrl}/csrf-token`);
+      console.log('[API] 요청 옵션:', {
+        method: 'GET',
+        credentials: 'include',
+        timeout: 5000,
+      });
       const response = await fetchWithTimeout(
         `${baseUrl}/csrf-token`,
         {
@@ -74,6 +91,7 @@ class ApiClient {
         },
         5000 // 5초 타임아웃
       );
+      console.log('[API] CSRF 토큰 응답 상태:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error(`CSRF 토큰 요청 실패: ${response.status}`);
       }
@@ -88,14 +106,27 @@ class ApiClient {
       const baseUrl = getBaseUrl();
       const errorMessage = error instanceof Error 
         ? error.message 
-        : '알 수 없는 오류';
+        : String(error);
+      
+      // 에러 상세 정보 로깅
+      console.error('[API] CSRF 토큰 가져오기 실패 - 에러 상세:', {
+        message: errorMessage,
+        name: error instanceof Error ? error.name : 'Unknown',
+        stack: error instanceof Error ? error.stack : 'No stack',
+        baseUrl,
+        errorToString: String(error),
+      });
+      console.error('[API] CSRF 토큰 가져오기 실패 - 원본 에러:', error);
       
       // 더 명확한 에러 메시지
-      if (errorMessage.includes('시간 초과') || errorMessage.includes('Network request failed')) {
-        throw new Error(`서버에 연결할 수 없습니다. 서버 URL을 확인해주세요: ${baseUrl}`);
+      if (errorMessage.includes('시간 초과') || errorMessage.includes('Network request failed') || errorMessage.includes('aborted')) {
+        const detailedError = new Error(`서버에 연결할 수 없습니다. 서버 URL을 확인해주세요: ${baseUrl}`);
+        console.error('[API] 네트워크 연결 실패:', detailedError.message);
+        // 네트워크 에러는 다시 시도할 수 있도록 토큰 초기화
+        this.csrfToken = null;
+        throw detailedError;
       }
       
-      console.error('CSRF 토큰 가져오기 실패:', error);
       // 네트워크 에러는 다시 시도할 수 있도록 토큰 초기화
       this.csrfToken = null;
       throw error;
@@ -319,6 +350,9 @@ class ApiClient {
     max_tokens?: number;
     stream?: boolean;
     chat_completion_source?: string;
+    reasoning_effort?: string;
+    include_reasoning?: boolean;
+    [key: string]: any; // 기타 파라미터들 허용
   }): Promise<any> {
     const baseUrl = getBaseUrl();
     const token = await this.getCsrfToken();

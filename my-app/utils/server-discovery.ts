@@ -36,36 +36,57 @@ async function checkServerAtIP(ip: string, port: number = SERVER_PORT): Promise<
     // CSRF 토큰 엔드포인트가 응답하면 서버가 실행 중
     if (response.ok) {
       const data = await response.json();
-      return data && typeof data.token === 'string';
+      const isValid = data && typeof data.token === 'string';
+      if (isValid) {
+        console.log(`[ServerDiscovery] 유효한 서버 발견: ${ip}:${port}`);
+      }
+      return isValid;
     }
     
     return false;
   } catch (error) {
     // 네트워크 에러는 무시 (서버가 없거나 연결 불가)
+    // 디버깅을 위해 에러 로그는 출력하지 않음 (너무 많아짐)
     return false;
   }
 }
 
 /**
  * 서브넷 범위에서 서버를 스캔
+ * 첫 번째 성공 시 즉시 반환하도록 최적화
  */
 async function scanSubnet(subnet: string, port: number = SERVER_PORT): Promise<string | null> {
-  const promises: Promise<{ ip: string; found: boolean }>[] = [];
+  // 배치 크기: 한 번에 20개씩 스캔
+  const BATCH_SIZE = 20;
+  const TOTAL_IPS = 254;
   
-  // 1부터 254까지 스캔 (0과 255는 일반적으로 사용되지 않음)
-  for (let i = 1; i <= 254; i++) {
-    const ip = `${subnet}.${i}`;
-    promises.push(
-      checkServerAtIP(ip, port).then(found => ({ ip, found }))
-    );
-  }
-  
-  // 모든 요청을 병렬로 실행하되, 첫 번째 성공 시 즉시 반환
-  const results = await Promise.allSettled(promises);
-  
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value.found) {
-      return result.value.ip;
+  // 배치 단위로 스캔 (첫 번째 성공 시 즉시 반환)
+  for (let start = 1; start <= TOTAL_IPS; start += BATCH_SIZE) {
+    const end = Math.min(start + BATCH_SIZE - 1, TOTAL_IPS);
+    const promises: Promise<{ ip: string; found: boolean }>[] = [];
+    
+    // 현재 배치의 IP들을 스캔
+    for (let i = start; i <= end; i++) {
+      const ip = `${subnet}.${i}`;
+      promises.push(
+        checkServerAtIP(ip, port)
+          .then(found => {
+            if (found) {
+              console.log(`[ServerDiscovery] 서버 발견: ${ip}:${port}`);
+            }
+            return { ip, found };
+          })
+          .catch(() => ({ ip, found: false }))
+      );
+    }
+    
+    // 현재 배치의 결과를 확인 (첫 번째 성공 시 즉시 반환)
+    const results = await Promise.allSettled(promises);
+    
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value.found) {
+        return result.value.ip;
+      }
     }
   }
   
@@ -80,6 +101,17 @@ async function scanSubnet(subnet: string, port: number = SERVER_PORT): Promise<s
  */
 export async function discoverServer(): Promise<string | null> {
   console.log('[ServerDiscovery] 서버 자동 감지 시작...');
+  
+  // Android 에뮬레이터를 위한 특수 IP 먼저 확인
+  const emulatorIPs = ['10.0.2.2']; // Android 에뮬레이터 호스트
+  console.log('[ServerDiscovery] Android 에뮬레이터 IP 확인 중...');
+  for (const ip of emulatorIPs) {
+    const found = await checkServerAtIP(ip);
+    if (found) {
+      console.log(`[ServerDiscovery] 서버 발견 (에뮬레이터): ${ip}:${SERVER_PORT}`);
+      return ip;
+    }
+  }
   
   // 일반적인 서브넷들을 순차적으로 스캔
   for (const subnet of COMMON_SUBNETS) {

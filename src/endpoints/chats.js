@@ -1159,19 +1159,48 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 chatHistory = getChatData(chatFilePath);
                 
                 // Find the latest summary from chat history (stored in extra.memory)
+                console.log('[prepare-messages] 채팅 히스토리에서 summary 찾는 중...', chatHistory.length, 'messages');
+                
+                // 디버깅: 각 메시지의 extra 확인 (마지막 5개만 확인)
+                let foundExtraCount = 0;
+                let foundMemoryCount = 0;
+                const checkRange = Math.max(0, chatHistory.length - 5);
+                for (let i = checkRange; i < chatHistory.length; i++) {
+                    if (chatHistory[i].extra) {
+                        foundExtraCount++;
+                        const extraKeys = Object.keys(chatHistory[i].extra);
+                        if (extraKeys.length > 0) {
+                            console.log('[prepare-messages] 인덱스', i, 'extra 키들:', extraKeys);
+                        }
+                        if (chatHistory[i].extra.memory) {
+                            foundMemoryCount++;
+                            console.log('[prepare-messages] 인덱스', i, '에서 extra.memory 발견:', chatHistory[i].extra.memory.substring(0, 50));
+                        }
+                    }
+                }
+                console.log('[prepare-messages] extra가 있는 메시지 개수:', foundExtraCount, '(마지막 5개 중)');
+                console.log('[prepare-messages] extra.memory가 있는 메시지 개수:', foundMemoryCount, '(마지막 5개 중)');
+                
+                // 역순으로 검색하여 가장 최근 summary 찾기
                 for (let i = chatHistory.length - 1; i >= 0; i--) {
                     const chatItem = chatHistory[i];
-                    if (chatItem.extra && chatItem.extra.memory) {
+                    // extra가 객체이고 memory 속성이 있는지 확인
+                    if (chatItem.extra && typeof chatItem.extra === 'object' && chatItem.extra.memory) {
                         summary = chatItem.extra.memory;
+                        console.log('[prepare-messages] Summary 발견 (인덱스', i, '):', summary.substring(0, 100));
                         break;
                     }
+                }
+                if (!summary) {
+                    console.log('[prepare-messages] 채팅 히스토리에서 summary를 찾지 못함');
                 }
             }
         }
 
-        // Load user settings to get name1 and extension settings
+        // Load user settings to get name1, extension settings, and oai_settings
         let name1 = 'You';
         let extensionSettings = {};
+        let oaiSettings = {};
         try {
             const pathToSettings = path.join(request.user.directories.root, 'settings.json');
             if (fs.existsSync(pathToSettings)) {
@@ -1185,10 +1214,41 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     if (settings.extension_settings) {
                         extensionSettings = settings.extension_settings;
                     }
+                    // Load oai_settings (for Main Prompt, etc.)
+                    if (settings.oai_settings) {
+                        oaiSettings = settings.oai_settings;
+                    }
                 }
             }
         } catch (error) {
             console.warn('[prepare-messages] Failed to load user settings:', error);
+        }
+        
+        // Get Main Prompt from oai_settings.prompts
+        let mainPrompt = null;
+        console.log('[prepare-messages] oaiSettings.prompts 존재:', !!oaiSettings.prompts);
+        console.log('[prepare-messages] oaiSettings.prompts 타입:', Array.isArray(oaiSettings.prompts) ? 'array' : typeof oaiSettings.prompts);
+        if (oaiSettings.prompts && Array.isArray(oaiSettings.prompts)) {
+            console.log('[prepare-messages] oaiSettings.prompts 길이:', oaiSettings.prompts.length);
+            const mainPromptConfig = oaiSettings.prompts.find(p => p.identifier === 'main');
+            console.log('[prepare-messages] mainPromptConfig 찾음:', !!mainPromptConfig);
+            if (mainPromptConfig && mainPromptConfig.content) {
+                // Replace macros: {{char}} -> name2, {{user}} -> name1
+                // Also handle {{charIfNotGroup}} -> name2 (for group chats, but we'll use name2 for now)
+                mainPrompt = mainPromptConfig.content
+                    .replace(/\{\{char\}\}/g, name2)
+                    .replace(/\{\{charIfNotGroup\}\}/g, name2)
+                    .replace(/\{\{user\}\}/g, name1);
+                console.log('[prepare-messages] Main Prompt 설정됨 (설정에서):', mainPrompt.substring(0, 100));
+            }
+        }
+        
+        // Default Main Prompt if not found in settings
+        if (!mainPrompt) {
+            mainPrompt = `Write ${name2}'s next reply in a fictional chat between ${name2} and ${name1}.`;
+            console.log('[prepare-messages] Main Prompt 기본값 사용:', mainPrompt);
+        } else {
+            console.log('[prepare-messages] Main Prompt 최종값:', mainPrompt.substring(0, 100));
         }
         
         // Get Summary settings
@@ -1203,6 +1263,11 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         if (summary) {
             // Replace {{summary}} placeholder in template
             formattedSummary = summaryTemplate.replace(/\{\{summary\}\}/g, summary);
+            console.log('[prepare-messages] Summary 발견:', summary.substring(0, 100));
+            console.log('[prepare-messages] Summary position:', summaryPosition, '(0=IN_PROMPT, 1=IN_CHAT)');
+            console.log('[prepare-messages] Formatted summary:', formattedSummary.substring(0, 100));
+        } else {
+            console.log('[prepare-messages] Summary가 없음 (chat history에서 찾지 못함)');
         }
 
         // Prepare basic message array
@@ -1213,6 +1278,38 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             messages.push({
                 role: 'system',
                 content: worldInfoBefore
+            });
+        }
+
+        // Add Main Prompt (after worldInfoBefore, before worldInfoAfter)
+        if (mainPrompt) {
+            console.log('[prepare-messages] Main Prompt를 messages에 추가:', mainPrompt.substring(0, 100));
+            messages.push({
+                role: 'system',
+                content: mainPrompt,
+                identifier: 'main'
+            });
+        } else {
+            console.warn('[prepare-messages] Main Prompt가 null이어서 추가하지 않음');
+        }
+
+        // Add Summary right after Main Prompt (if position is IN_PROMPT)
+        // 웹에서는 Main Prompt 바로 다음에 summary가 옴
+        if (formattedSummary && summaryPosition === 0) {
+            const summaryRoleStr = summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant');
+            console.log('[prepare-messages] Summary를 Main Prompt 다음에 추가 (IN_PROMPT):', formattedSummary.substring(0, 100));
+            messages.push({
+                role: summaryRoleStr,
+                content: formattedSummary,
+                identifier: 'summary'
+            });
+        }
+
+        // Add world info after (if exists) - should be after Main Prompt and Summary
+        if (worldInfoAfter) {
+            messages.push({
+                role: 'system',
+                content: worldInfoAfter
             });
         }
 
@@ -1263,53 +1360,26 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             content: user_message
         });
 
-        // Add world info after (if exists)
-        if (worldInfoAfter) {
-            messages.push({
-                role: 'system',
-                content: worldInfoAfter
-            });
-        }
-
-        // Apply Summary extension prompt
-        // Summary position: 0 = IN_PROMPT (Before/After Main Prompt), 1 = IN_CHAT (at depth)
-        if (formattedSummary) {
-            if (summaryPosition === 0) {
-                // IN_PROMPT: Add before or after main prompts
-                // For now, add after scenario (before chat history)
-                // TODO: Support Before/After positioning based on settings
-                const scenarioIndex = messages.findIndex(m => m.content === scenario);
-                if (scenarioIndex >= 0) {
-                    messages.splice(scenarioIndex + 1, 0, {
-                        role: summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant'),
-                        content: formattedSummary,
-                        identifier: 'summary'
-                    });
-                } else {
-                    // If scenario not found, add at the end of system prompts
-                    messages.push({
-                        role: summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant'),
-                        content: formattedSummary,
-                        identifier: 'summary'
-                    });
-                }
-            } else {
-                // IN_CHAT: Add at specific depth in chat history
-                // Depth 0 = before last message, Depth 1 = before second-to-last, etc.
-                // For now, add before the last user message (depth 0)
-                // TODO: Implement proper depth-based insertion
-                const lastUserIndex = messages.map((m, i) => ({ role: m.role, index: i }))
-                    .filter(m => m.role === 'user')
-                    .pop()?.index;
-                
-                if (lastUserIndex !== undefined) {
-                    messages.splice(lastUserIndex, 0, {
-                        role: summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant'),
-                        content: formattedSummary,
-                        identifier: 'summary',
-                        injected: true
-                    });
-                }
+        // Apply Summary extension prompt for IN_CHAT position (at depth)
+        // Summary position: 0 = IN_PROMPT (already added above), 1 = IN_CHAT (at depth)
+        if (formattedSummary && summaryPosition === 1) {
+            // IN_CHAT: Add at specific depth in chat history
+            // Depth 0 = before last message, Depth 1 = before second-to-last, etc.
+            // For now, add before the last user message (depth 0)
+            // TODO: Implement proper depth-based insertion
+            const lastUserIndex = messages.map((m, i) => ({ role: m.role, index: i }))
+                .filter(m => m.role === 'user')
+                .pop()?.index;
+            
+            if (lastUserIndex !== undefined) {
+                const summaryRoleStr = summaryRole === 0 ? 'system' : (summaryRole === 1 ? 'user' : 'assistant');
+                console.log('[prepare-messages] Summary를 채팅 히스토리 중간에 추가 (IN_CHAT, depth:', summaryDepth, '):', formattedSummary.substring(0, 100));
+                messages.splice(lastUserIndex, 0, {
+                    role: summaryRoleStr,
+                    content: formattedSummary,
+                    identifier: 'summary',
+                    injected: true
+                });
             }
         }
         
@@ -1710,6 +1780,13 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 if (serverSettings.vertexai_model !== undefined) {
                     requestBody.model = serverSettings.vertexai_model;
                 }
+                // Add reasoning settings for Gemini models
+                if (serverSettings.reasoning_effort !== undefined) {
+                    requestBody.reasoning_effort = serverSettings.reasoning_effort;
+                }
+                if (serverSettings.include_reasoning !== undefined) {
+                    requestBody.include_reasoning = serverSettings.include_reasoning;
+                }
             }
             
             // Add additional OpenAI settings if available
@@ -1829,10 +1906,38 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 }
                 chatHistory[saveIndex].extra.memory = generatedSummary;
                 
+                // 디버깅: 저장 전 데이터 확인
+                console.log(`[generateSummaryForChat] 저장 전 확인 - 인덱스 ${saveIndex}:`, {
+                    hasExtra: !!chatHistory[saveIndex].extra,
+                    extraKeys: Object.keys(chatHistory[saveIndex].extra || {}),
+                    hasMemory: !!chatHistory[saveIndex].extra.memory,
+                    memoryLength: chatHistory[saveIndex].extra.memory?.length || 0,
+                });
+                
+                // 디버깅: JSON 문자열 확인
+                const jsonString = JSON.stringify(chatHistory[saveIndex]);
+                console.log(`[generateSummaryForChat] 저장할 JSON 문자열 (인덱스 ${saveIndex}):`, jsonString.substring(0, 200));
+                
                 // Save chat history
                 const handle = path.basename(directories.root);
                 const cardName = characterDirName;
                 await trySaveChat(chatHistory, chatFilePath, false, handle, cardName, directories.backups);
+                
+                // 파일이 디스크에 쓰일 시간을 주기 위해 약간 대기
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // 디버깅: 저장 후 파일 읽기 확인
+                const savedData = getChatData(chatFilePath);
+                if (savedData[saveIndex]) {
+                    console.log(`[generateSummaryForChat] 저장 후 확인 - 인덱스 ${saveIndex}:`, {
+                        hasExtra: !!savedData[saveIndex].extra,
+                        extraKeys: savedData[saveIndex].extra ? Object.keys(savedData[saveIndex].extra) : [],
+                        hasMemory: !!savedData[saveIndex].extra?.memory,
+                        savedJsonString: JSON.stringify(savedData[saveIndex]).substring(0, 200),
+                    });
+                } else {
+                    console.warn(`[generateSummaryForChat] 저장 후 확인 실패 - 인덱스 ${saveIndex}에 데이터가 없음 (총 ${savedData.length}개 메시지)`);
+                }
                 
                 console.log(`[generateSummaryForChat] Summary generated and saved successfully (mode: ${isRawMode ? 'RAW' : 'DEFAULT'}, saved at index: ${saveIndex})`);
                 return generatedSummary;
