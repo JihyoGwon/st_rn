@@ -10,11 +10,13 @@ import { CharacterCard } from '@/components/character-card';
 import { Button } from '@/components/ui/button';
 import { useCharacterStore } from '@/store/character-store';
 import { useAppSettingsStore } from '@/store/app-settings-store';
+import { useChatStore } from '@/store/chat-store';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { characters, isLoading, error, loadCharacters, selectCharacter } = useCharacterStore();
   const { settings, loadFromStorage } = useAppSettingsStore();
+  const { getMostRecentChatId, loadChatHistory } = useChatStore();
 
   // 앱 시작 시 설정 로드 및 캐릭터 목록 로드
   useEffect(() => {
@@ -29,9 +31,23 @@ export default function HomeScreen() {
     initialize();
   }, []);
 
-  const handleCharacterPress = (character: typeof characters[0]) => {
+  const handleCharacterPress = async (character: typeof characters[0]) => {
     selectCharacter(character);
-    router.push('/chat');
+    
+    // 가장 최근 채팅 찾기
+    try {
+      const mostRecentChatId = await getMostRecentChatId(character.avatar);
+      
+      // 채팅 히스토리 로드 (가장 최근 채팅 또는 기본 'chat')
+      await loadChatHistory(character.avatar, mostRecentChatId || 'chat');
+      
+      // 채팅 화면으로 이동
+      router.push('/chat');
+    } catch (error) {
+      console.error('최근 채팅 로드 실패:', error);
+      // 에러가 발생해도 채팅 화면으로 이동 (기본 채팅 사용)
+      router.push('/chat');
+    }
   };
 
   const handleRefresh = async () => {

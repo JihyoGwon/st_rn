@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator, Alert, TouchableOpacity, Modal } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ChatMessageComponent } from '@/components/chat-message';
+import { ChatListModal } from '@/components/chat-list-modal';
 import { useChatStore } from '@/store/chat-store';
 import { useCharacterStore } from '@/store/character-store';
 import { useAppSettingsStore } from '@/store/app-settings-store';
@@ -19,6 +20,9 @@ export default function ChatScreen() {
   const router = useRouter();
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [showChatListModal, setShowChatListModal] = useState(false);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [deleteCurrentChat, setDeleteCurrentChat] = useState(false);
   const { 
     messages, 
     isLoading, 
@@ -27,7 +31,7 @@ export default function ChatScreen() {
     addMessage, 
     sendMessage,
     currentChatId,
-    resetChat
+    createNewChat
   } = useChatStore();
   const { selectedCharacter } = useCharacterStore();
   const { settings, loadFromStorage } = useAppSettingsStore();
@@ -107,35 +111,22 @@ export default function ChatScreen() {
     }
   };
 
-  const handleResetChat = () => {
-    if (!selectedCharacter) {
-      return;
+  const handleNewChat = async () => {
+    if (!selectedCharacter || isLoading) return;
+    
+    try {
+      const newChatId = await createNewChat(
+        selectedCharacter.avatar,
+        selectedCharacter.name,
+        deleteCurrentChat
+      );
+      setShowNewChatModal(false);
+      setDeleteCurrentChat(false);
+      await loadChatHistory(selectedCharacter.avatar, newChatId);
+    } catch (error) {
+      console.error('새 채팅 생성 실패:', error);
+      Alert.alert('오류', '새 채팅을 생성할 수 없습니다.');
     }
-
-    Alert.alert(
-      '채팅 리셋',
-      '모든 채팅 내용이 삭제됩니다. 계속하시겠습니까?',
-      [
-        {
-          text: '취소',
-          style: 'cancel',
-        },
-        {
-          text: '리셋',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await resetChat(selectedCharacter.avatar, currentChatId || 'chat');
-              // 리셋 후 채팅 히스토리 다시 로드 (빈 상태로)
-              await loadChatHistory(selectedCharacter.avatar, currentChatId || 'chat');
-            } catch (error) {
-              console.error('채팅 리셋 실패:', error);
-              Alert.alert('오류', '채팅을 리셋할 수 없습니다.');
-            }
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -146,13 +137,22 @@ export default function ChatScreen() {
           <ThemedText style={styles.headerTitle}>
             {selectedCharacter?.name || '채팅'}
           </ThemedText>
-          <TouchableOpacity 
-            style={styles.menuButton}
-            onPress={handleResetChat}
-            disabled={!selectedCharacter || isLoading}
-          >
-            <MaterialIcons name="more-vert" size={24} color={iconColor} />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity 
+              style={styles.menuButton}
+              onPress={() => setShowChatListModal(true)}
+              disabled={!selectedCharacter || isLoading}
+            >
+              <MaterialIcons name="history" size={24} color={iconColor} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.menuButton}
+              onPress={() => setShowNewChatModal(true)}
+              disabled={!selectedCharacter || isLoading}
+            >
+              <MaterialIcons name="more-vert" size={24} color={iconColor} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <KeyboardAvoidingView
@@ -206,6 +206,70 @@ export default function ChatScreen() {
         </View>
         </KeyboardAvoidingView>
       </ThemedView>
+
+      {/* 채팅 목록 모달 */}
+      <ChatListModal
+        visible={showChatListModal}
+        onClose={() => setShowChatListModal(false)}
+        onSelectChat={async (chatId) => {
+          if (selectedCharacter) {
+            await loadChatHistory(selectedCharacter.avatar, chatId);
+          }
+        }}
+      />
+
+      {/* 새 채팅 생성 모달 */}
+      <Modal
+        visible={showNewChatModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowNewChatModal(false);
+          setDeleteCurrentChat(false);
+        }}
+      >
+        <ThemedView style={styles.modalOverlay}>
+          <ThemedView style={styles.modalContent}>
+            <ThemedText type="title" style={styles.modalTitle}>
+              새 채팅 생성
+            </ThemedText>
+            <ThemedText style={styles.modalDescription}>
+              새 채팅을 생성하시겠습니까?
+            </ThemedText>
+            
+            <TouchableOpacity
+              style={styles.checkboxContainer}
+              onPress={() => setDeleteCurrentChat(!deleteCurrentChat)}
+            >
+              <MaterialIcons
+                name={deleteCurrentChat ? 'check-box' : 'check-box-outline-blank'}
+                size={24}
+                color={iconColor}
+              />
+              <ThemedText style={styles.checkboxLabel}>
+                기존 채팅 삭제
+              </ThemedText>
+            </TouchableOpacity>
+
+            <View style={styles.modalButtons}>
+              <Button
+                title="취소"
+                onPress={() => {
+                  setShowNewChatModal(false);
+                  setDeleteCurrentChat(false);
+                }}
+                style={[styles.modalButton, styles.cancelButton]}
+              />
+              <Button
+                title={isLoading ? "생성 중..." : "생성"}
+                onPress={handleNewChat}
+                style={styles.modalButton}
+                disabled={isLoading}
+              />
+            </View>
+          </ThemedView>
+        </ThemedView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -229,6 +293,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   menuButton: {
     padding: 4,
@@ -274,6 +343,48 @@ const styles = StyleSheet.create({
     minWidth: 60,
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  modalDescription: {
+    fontSize: 16,
+    marginBottom: 20,
+    opacity: 0.7,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 12,
+  },
+  checkboxLabel: {
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
 });
 

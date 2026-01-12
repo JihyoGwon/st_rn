@@ -22,8 +22,8 @@
 - [x] 시스템 프롬프트 (system_prompt) - 서버에서 로드됨
 - [x] Post-History Instructions (jailbreak) - 서버에서 로드됨
 - [x] 메시지 예제 (mes_example) - 서버에서 로드됨
-- [x] 첫 메시지 (first_mes) - 서버에서 로드됨
-- [x] 대체 인사말 (alternate_greetings) - 서버에서 로드됨
+- [x] 첫 메시지 (first_mes) - 서버에서 로드됨, 첫 메시지 처리 구현됨 ✅
+- [x] 대체 인사말 (alternate_greetings) - 서버에서 로드됨, 랜덤 선택 구현됨 ✅
 - [x] Creator Notes (creator_notes) - 서버에서 로드됨
 
 ### ⚠️ 조건부 항목
@@ -62,10 +62,10 @@
 - [ ] worldInfoBefore / worldInfoAfter 분리
 
 ### ⚠️ 간소화 버전 (기본 기능만)
-- [x] 월드 인포 파일 로드 (`/api/chats/prepare-messages`에서 처리)
-- [x] 모든 엔트리 포함 (현재는 모든 엔트리 포함)
+- [x] 월드 인포 파일 로드 (`/api/chats/prepare-messages`에서 처리) ✅
+- [x] 모든 엔트리 포함 (현재는 모든 엔트리 포함) ✅
 - [ ] 키워드 기반 필터링 (TODO: 스캔 로직 미구현)
-- [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함)
+- [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함) ✅
 
 ---
 
@@ -78,14 +78,16 @@
 - [x] Summary 생성 로직
   - [x] 요약 소스 선택 (main) ✅
   - [ ] 요약 소스 선택 (extras, webllm) - 미지원
-  - [x] 요약 프롬프트 실행
-  - [x] 요약 템플릿 적용
-  - [x] 요약 간격 관리 (Prompt Interval)
-  - [x] 요약 단어 수 관리 (Prompt Words)
+  - [x] 요약 프롬프트 실행 - `/api/chats/summarize` 엔드포인트 구현됨 ✅
+  - [x] 요약 템플릿 적용 - `{{summary}}` 매크로 치환 구현됨 ✅
+  - [x] Summary 로드 - 채팅 히스토리에서 `extra.memory` 로드 구현됨 ✅
+  - [x] Summary 저장 - 채팅 히스토리에 저장 구현됨 ✅
+- [x] 요약 간격 관리 (Prompt Interval) - 자동 생성 체크 구현됨 ✅
+- [x] 요약 단어 수 관리 (Prompt Words) - 프롬프트에 적용됨 ✅
 - [ ] 강제 요약 단어 수 (Prompt Force Words)
 - [x] 요청당 최대 메시지 수 (Max Messages Per Request)
 - [x] 프롬프트 빌더 모드 (Prompt Builder: RAW_BLOCKING, RAW_NON_BLOCKING)
-- [x] Summary 위치/깊이/역할 적용
+- [x] Summary 위치/깊이/역할 적용 - IN_PROMPT, IN_CHAT 위치 및 depth, role 지원 ✅
 
 #### 3.2 Authors Note (2_floating_prompt)
 - [ ] Authors Note 설정 로드
@@ -144,14 +146,14 @@
 ## 4. 프롬프트 포맷팅
 
 ### ✅ 필수 항목
-- [ ] 매크로 치환 (`substituteParams`)
+- [x] 매크로 치환 (`substituteParams`) - 기본 매크로 ({{char}}, {{user}}, {{charIfNotGroup}}) 구현됨 ✅
 - [ ] 시나리오 포맷 (`scenario_format`)
 - [ ] 성격 포맷 (`personality_format`)
 - [ ] 월드 인포 포맷 (`wi_format`)
 - [ ] 그룹 Nudge 프롬프트 (`group_nudge_prompt`)
 - [ ] Impersonation 프롬프트 (`impersonation_prompt`)
 - [ ] Continue Nudge 프롬프트 (`continue_nudge_prompt`)
-- [ ] New Example Chat 프롬프트 (`new_example_chat_prompt`)
+- [x] New Example Chat 프롬프트 (`new_example_chat_prompt`) - `new_chat_prompt` 구현됨 ✅
 - [ ] Send If Empty (`send_if_empty`)
 - [ ] Assistant Prefill (`assistant_prefill`)
 - [ ] Continue Prefill (`continue_prefill`)
@@ -164,13 +166,13 @@
 - [ ] 프롬프트 컬렉션 관리 (`getPromptCollection`)
 - [ ] 프롬프트 마커 관리
 - [ ] 프롬프트 순서 관리
-- [ ] 프롬프트 위치 관리 (Before Prompt, In Prompt, In Chat)
-- [ ] 프롬프트 깊이 관리 (Injection Depth)
+- [x] 프롬프트 위치 관리 (Before Prompt, In Prompt, In Chat) - 기본 구조 구현됨 ✅
+- [x] 프롬프트 깊이 관리 (Injection Depth) - Summary depth 지원 ✅
 - [ ] 프롬프트 우선순위 관리 (Injection Order)
-- [ ] 프롬프트 역할 관리 (system, user, assistant)
+- [x] 프롬프트 역할 관리 (system, user, assistant) - Summary role 지원 ✅
 - [ ] 프롬프트 비활성화 관리 (캐릭터별)
 - [ ] 프롬프트 오버라이드 관리
-- [ ] Main Prompt 처리
+- [x] Main Prompt 처리 - `oai_settings.prompts`에서 로드 및 매크로 치환 ✅
 - [ ] Jailbreak Prompt 처리
 - [ ] Dialogue Examples 처리
 - [ ] Chat History 마커 처리
@@ -180,19 +182,19 @@
 ## 6. 메시지 처리
 
 ### ✅ 필수 항목
-- [x] 채팅 히스토리 로드 (`/api/chats/get`)
-- [x] 채팅 히스토리 포맷팅 (`/api/chats/prepare-messages`에서 처리)
+- [x] 채팅 히스토리 로드 (`/api/chats/get`) ✅
+- [x] 채팅 히스토리 포맷팅 (`/api/chats/prepare-messages`에서 처리) ✅
 - [ ] 메시지 예제 (Message Examples) 처리
 - [ ] 메시지 예제 파싱 (`parseExampleIntoIndividual`)
-- [ ] 메시지 이름 처리 (Names Behavior)
-- [ ] 메시지 역할 변환 (user, assistant, system)
+- [x] 메시지 이름 처리 (Names Behavior) - name1, name2 기반 처리 ✅
+- [x] 메시지 역할 변환 (user, assistant, system) - 채팅 히스토리 변환 구현됨 ✅
 - [ ] 이미지 인라인 처리 (Image Inlining)
 - [ ] 비디오 인라인 처리 (Video Inlining)
 - [ ] 오디오 인라인 처리 (Audio Inlining)
 - [ ] 도구 호출 지원 (Tool Calling)
 - [x] 추론 설정 지원 (Reasoning Effort, Include Reasoning) - Gemini 모델용 ✅
 - [ ] 추론 서명 지원 (Reasoning Signature)
-- [ ] In-Chat Injection 처리 (`populationInjectionPrompts`)
+- [x] In-Chat Injection 처리 (`populationInjectionPrompts`) - Summary IN_CHAT 위치 지원 ✅
 - [ ] Continue 타입 처리
 - [ ] Impersonate 타입 처리
 - [ ] Regenerate 타입 처리
@@ -231,11 +233,11 @@
 ## 9. 기타 기능
 
 ### ✅ 필수 항목
-- [x] 사용자 설정 로드 (name1, settings) - `/api/chats/prepare-messages`에서 처리
-- [x] OpenAI 설정 로드 (`oai_settings`) - `/api/settings/get`에서 동기화
+- [x] 사용자 설정 로드 (name1, settings) - `/api/chats/prepare-messages`에서 처리 ✅
+- [x] OpenAI 설정 로드 (`oai_settings`) - `/api/settings/get`에서 동기화 ✅
 - [x] Gemini 추론 설정 로드 (`reasoning_effort`, `include_reasoning`) - 서버 설정 동기화 및 API 요청에 포함 ✅
 - [ ] Power User 설정 로드 (`power_user`)
-- [ ] 확장 설정 로드 (`extension_settings`)
+- [x] 확장 설정 로드 (`extension_settings`) - `extension_settings.memory` 로드 및 사용 ✅
 - [ ] Bias 처리 (`getBiasStrings`)
 - [ ] Quiet Prompt 처리
 - [ ] Quiet Image 처리
@@ -302,12 +304,12 @@
 
 ### Phase 2: 필수 확장 기능
 - [ ] Authors Note (간단)
-- [ ] 기본 프롬프트 포맷팅 (중간)
+- [x] 기본 프롬프트 포맷팅 (중간) - Main Prompt, 매크로 치환 구현됨 ✅
 - [ ] 메시지 예제 처리 (중간)
 
 ### Phase 3: 고급 확장 기능
 - [ ] 벡터 메모리 (복잡)
-- [ ] Summary (중간)
+- [x] Summary (중간) - 대부분 구현됨 (생성, 로드, 위치/깊이/역할 적용) ✅
 - [ ] Smart Context (중간)
 
 ### Phase 4: 완전한 월드 인포

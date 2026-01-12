@@ -124,6 +124,21 @@ export interface ChatCompletionResponse {
 }
 
 /**
+ * 최근 채팅 정보
+ */
+export interface RecentChat {
+  file_name: string;        // "chat.jsonl"
+  chat_name?: string;       // "chat" (확장자 제거)
+  last_mes: string;         // 마지막 메시지 타임스탬프
+  mes?: string;            // 마지막 메시지 내용
+  avatar: string;           // 캐릭터 아바타 파일명
+  char_name?: string;       // 캐릭터 이름
+  chat_items?: number;      // 메시지 개수
+  file_size?: string;       // 파일 크기
+  [key: string]: unknown;
+}
+
+/**
  * API 응답 기본 타입
  */
 export interface ApiResponse<T> {

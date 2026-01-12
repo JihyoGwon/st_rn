@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { apiClient } from '@/lib/api/client';
 import { useAppSettingsStore } from './app-settings-store';
 import { useCharacterStore } from './character-store';
+import { humanizedDateTime } from '@/utils/date-format';
 import type {
   ServerChatMessage,
   ServerChatData,
@@ -10,6 +11,7 @@ import type {
   ChatCompletionParams,
   ChatCompletionResponse,
   PrepareMessagesResponse,
+  RecentChat,
 } from '@/types/api';
 
 // ServerChatMessage는 types/api.ts로 이동했지만 호환성을 위해 재export
@@ -34,6 +36,8 @@ interface ChatStore {
   currentChatId: string | null;
   isLoading: boolean;
   error: string | null;
+  chatList: RecentChat[];
+  isLoadingChatList: boolean;
   
   // 액션들
   loadChatHistory: (characterId: string, chatId?: string) => Promise<void>;
@@ -42,6 +46,10 @@ interface ChatStore {
   clearMessages: () => void;
   setCurrentChatId: (chatId: string | null) => void;
   resetChat: (characterId: string, chatId?: string) => Promise<void>;
+  loadChatList: (characterId: string) => Promise<void>;
+  getMostRecentChatId: (characterId: string) => Promise<string | null>;
+  createNewChat: (characterId: string, characterName: string, deleteCurrentChat?: boolean) => Promise<string>;
+  deleteChat: (characterId: string, fileName: string) => Promise<void>;
 }
 
 /**
@@ -99,6 +107,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   currentChatId: null,
   isLoading: false,
   error: null,
+  chatList: [],
+  isLoadingChatList: false,
 
   /**
    * 채팅 히스토리 로드
@@ -447,6 +457,158 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const errorMessage = error instanceof Error 
         ? error.message 
         : '채팅을 리셋할 수 없습니다';
+      set({ 
+        error: errorMessage,
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  /**
+   * 채팅 목록 로드
+   */
+  loadChatList: async (characterId: string) => {
+    set({ isLoadingChatList: true, error: null });
+    
+    try {
+      const chats = await apiClient.getCharacterChats(characterId);
+      
+      // 최신순 정렬 (last_mes 기준)
+      const sortedChats = chats.sort((a, b) => {
+        const timeA = new Date(a.last_mes || 0).getTime();
+        const timeB = new Date(b.last_mes || 0).getTime();
+        return timeB - timeA; // 최신순
+      });
+      
+      // chat_name 설정 (file_name에서 확장자 제거)
+      const chatsWithNames = sortedChats.map(chat => ({
+        ...chat,
+        chat_name: chat.file_name?.replace('.jsonl', '') || chat.file_name,
+      }));
+      
+      set({ chatList: chatsWithNames, isLoadingChatList: false });
+    } catch (error) {
+      console.error('[ChatStore] 채팅 목록 로드 실패:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : '채팅 목록을 불러올 수 없습니다';
+      set({ 
+        error: errorMessage,
+        isLoadingChatList: false,
+        chatList: []
+      });
+    }
+  },
+
+  /**
+   * 가장 최근 채팅 ID 가져오기
+   */
+  getMostRecentChatId: async (characterId: string): Promise<string | null> => {
+    try {
+      const chats = await apiClient.getCharacterChats(characterId);
+      
+      if (chats.length === 0) {
+        return null;
+      }
+      
+      // 최신순 정렬
+      const sortedChats = chats.sort((a, b) => {
+        const timeA = new Date(a.last_mes || 0).getTime();
+        const timeB = new Date(b.last_mes || 0).getTime();
+        return timeB - timeA;
+      });
+      
+      const mostRecent = sortedChats[0];
+      return mostRecent.file_name?.replace('.jsonl', '') || 'chat';
+    } catch (error) {
+      console.error('[ChatStore] 최근 채팅 ID 가져오기 실패:', error);
+      return null;
+    }
+  },
+
+  /**
+   * 새 채팅 생성
+   */
+  createNewChat: async (characterId: string, characterName: string, deleteCurrentChat: boolean = false): Promise<string> => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      // 현재 채팅 저장 (삭제 옵션이 켜져있으면)
+      if (deleteCurrentChat && get().currentChatId) {
+        try {
+          const messages = get().messages;
+          if (messages.length > 0) {
+            const serverChatData = convertAppMessagesToServerFormat(
+              messages,
+              'You',
+              characterName,
+              get().currentChatId || 'chat'
+            );
+            await apiClient.saveChat(characterId, get().currentChatId || 'chat', serverChatData);
+          }
+        } catch (error) {
+          console.warn('[ChatStore] 현재 채팅 저장 실패 (무시):', error);
+        }
+        
+        // 기존 채팅 삭제
+        if (get().currentChatId) {
+          try {
+            await apiClient.deleteChat(characterId, `${get().currentChatId}.jsonl`);
+          } catch (error) {
+            console.warn('[ChatStore] 기존 채팅 삭제 실패 (무시):', error);
+          }
+        }
+      }
+      
+      // 새 채팅 이름 생성 (SillyTavern 형식: "캐릭터명 - 날짜시간")
+      const newChatName = `${characterName} - ${humanizedDateTime()}`;
+      
+      // 새 채팅으로 전환
+      set({ 
+        messages: [],
+        currentChatId: newChatName,
+        isLoading: false 
+      });
+      
+      return newChatName;
+    } catch (error) {
+      console.error('[ChatStore] 새 채팅 생성 실패:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : '새 채팅을 생성할 수 없습니다';
+      set({ 
+        error: errorMessage,
+        isLoading: false 
+      });
+      throw error;
+    }
+  },
+
+  /**
+   * 채팅 삭제
+   */
+  deleteChat: async (characterId: string, fileName: string) => {
+    set({ isLoading: true, error: null });
+    
+    try {
+      await apiClient.deleteChat(characterId, fileName);
+      
+      // 채팅 목록 새로고침
+      await get().loadChatList(characterId);
+      
+      // 삭제한 채팅이 현재 채팅이면 초기화
+      const chatIdWithoutExt = fileName.replace('.jsonl', '');
+      if (get().currentChatId === chatIdWithoutExt) {
+        set({ messages: [], currentChatId: null });
+      }
+      
+      set({ isLoading: false });
+    } catch (error) {
+      console.error('[ChatStore] 채팅 삭제 실패:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : '채팅을 삭제할 수 없습니다';
       set({ 
         error: errorMessage,
         isLoading: false 

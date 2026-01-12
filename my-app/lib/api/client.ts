@@ -12,6 +12,7 @@ import type {
   PrepareMessagesResponse,
   ChatCompletionParams,
   ChatCompletionResponse,
+  RecentChat,
 } from '@/types/api';
 
 /**
@@ -349,6 +350,28 @@ class ApiClient {
     return this.post<{ ok: boolean }>('/api/chats/reset', {
       avatar_url: avatarUrl,
       chatfile: chatfile,
+    });
+  }
+
+  /**
+   * 특정 캐릭터의 채팅 목록 가져오기
+   */
+  async getCharacterChats(avatarUrl: string): Promise<RecentChat[]> {
+    return this.post<RecentChat[]>('/api/characters/chats', {
+      avatar_url: avatarUrl,
+    });
+  }
+
+  /**
+   * 채팅 삭제
+   */
+  async deleteChat(
+    avatarUrl: string,
+    fileName: string
+  ): Promise<{ ok: boolean }> {
+    return this.post<{ ok: boolean }>('/api/chats/delete', {
+      avatar_url: avatarUrl,
+      chatfile: fileName, // 서버는 chatfile 파라미터를 기대함
     });
   }
 
