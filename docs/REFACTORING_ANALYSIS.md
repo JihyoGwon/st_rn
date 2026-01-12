@@ -221,8 +221,9 @@ SillyTavern React Native 앱의 코드 품질을 분석하고 리팩토링이 �
 
 ## 3. 코드 중복
 
-### 3.1 Character 정보 가져오기 로직 중복
+### 3.1 Character 정보 가져오기 로직 중복 ✅ 완료
 **위치**: `store/chat-store.ts`
+**상태**: 완료 (2024년)
 **문제점**:
 - `loadChatHistory()` 함수 내에서 Character 정보를 가져오는 로직이 두 번 반복됨
   - 134-179라인: 새 채팅인 경우 Character 정보 가져오기
@@ -231,25 +232,43 @@ SillyTavern React Native 앱의 코드 품질을 분석하고 리팩토링이 �
 **영향**:
 - 코드 중복으로 유지보수 어려움
 - 로직 변경 시 두 곳 모두 수정 필요
+- 불필요한 API 호출 (최대 2번)
 
 **권장 사항**:
-- `getCharacterData(characterId: string)` 헬퍼 함수로 추출
-- 캐싱 고려 (같은 Character에 대해 중복 요청 방지)
+- ✅ Character 정보를 한 번만 가져와서 재사용
+
+**완료된 작업**:
+- ✅ Character 정보를 함수 시작 부분에서 한 번만 가져오기
+  - `needsCharacterData` 변수로 필요 여부 확인
+  - 새 채팅이거나 필터링이 필요한 경우에만 API 호출
+- ✅ 가져온 `characterData`를 새 채팅 처리와 필터링에서 모두 재사용
+- ✅ 중복 API 호출 제거 (최대 2번 → 최대 1번)
+- ✅ 코드 중복 제거로 유지보수성 향상
 
 ---
 
-### 3.2 에러 메시지 처리 로직 중복
+### 3.2 에러 메시지 처리 로직 중복 ✅ 완료
 **위치**: `lib/api/client.ts`
+**상태**: 완료 (2024년)
 **문제점**:
 - 네트워크 에러 감지 로직이 여러 곳에 반복됨
-  - 116라인: CSRF 토큰 에러 처리
-  - 263라인: API 요청 에러 처리
+  - 122라인: CSRF 토큰 에러 처리
+  - 269라인: API 요청 에러 처리
 
 **영향**:
 - 에러 처리 로직 변경 시 여러 곳 수정 필요
 
 **권장 사항**:
-- `isNetworkError(error: Error): boolean` 헬퍼 함수로 추출
+- ✅ `isNetworkError(error: Error): boolean` 헬퍼 함수로 추출
+
+**완료된 작업**:
+- ✅ `isNetworkError()` 헬퍼 함수 생성
+  - 네트워크 에러 감지 로직을 한 곳에 통합
+  - '시간 초과', 'Network request failed', 'aborted', 'Failed to fetch' 등 감지
+- ✅ 중복된 네트워크 에러 처리 로직 교체
+  - CSRF 토큰 에러 처리: `isNetworkError()` 사용
+  - API 요청 에러 처리: `isNetworkError()` 사용
+- ✅ 코드 중복 제거로 유지보수성 향상
 
 ---
 

@@ -27,6 +27,21 @@ function getBaseUrl(): string {
 }
 
 /**
+ * 네트워크 에러인지 확인
+ * @param error 에러 객체 또는 에러 메시지
+ * @returns 네트워크 에러 여부
+ */
+function isNetworkError(error: Error | string): boolean {
+  const errorMessage = error instanceof Error ? error.message : error;
+  return (
+    errorMessage.includes('시간 초과') ||
+    errorMessage.includes('Network request failed') ||
+    errorMessage.includes('aborted') ||
+    errorMessage.includes('Failed to fetch')
+  );
+}
+
+/**
  * 타임아웃이 있는 fetch 래퍼
  */
 function fetchWithTimeout(
@@ -119,7 +134,7 @@ class ApiClient {
       console.error('[API] CSRF 토큰 가져오기 실패 - 원본 에러:', error);
       
       // 더 명확한 에러 메시지
-      if (errorMessage.includes('시간 초과') || errorMessage.includes('Network request failed') || errorMessage.includes('aborted')) {
+      if (isNetworkError(error)) {
         const detailedError = new Error(`서버에 연결할 수 없습니다. 서버 URL을 확인해주세요: ${baseUrl}`);
         console.error('[API] 네트워크 연결 실패:', detailedError.message);
         // 네트워크 에러는 다시 시도할 수 있도록 토큰 초기화
@@ -266,7 +281,7 @@ class ApiClient {
     } catch (error) {
       // 타임아웃이나 네트워크 에러 시 더 명확한 메시지
       if (error instanceof Error) {
-        if (error.message.includes('시간 초과') || error.message.includes('Network request failed')) {
+        if (isNetworkError(error)) {
           throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하고, 프로필에서 서버 URL을 확인해주세요. (${baseUrl})`);
         }
         throw error;
