@@ -58,13 +58,16 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ThemedView style={styles.centerContainer}>
-          <ThemedText type="title" style={styles.errorText}>연결 오류</ThemedText>
+          <ThemedText type="title" style={styles.errorText}>서버를 찾을 수 없습니다</ThemedText>
           <ThemedText style={styles.errorMessage}>{error}</ThemedText>
-          <Button
-            title="서버 설정으로 이동"
-            onPress={() => router.push('/profile')}
-            style={styles.settingsButton}
-          />
+          <ThemedView style={styles.helpSection}>
+            <ThemedText style={styles.helpTitle}>해결 방법:</ThemedText>
+            <ThemedText style={styles.helpText}>
+              1. PC에서 SillyTavern 서버가 실행 중인지 확인{'\n'}
+              2. 같은 Wi-Fi 네트워크에 연결되어 있는지 확인{'\n'}
+              3. 방화벽이 서버 접근을 차단하지 않는지 확인
+            </ThemedText>
+          </ThemedView>
           <Button
             title="다시 시도"
             onPress={handleRefresh}
@@ -165,12 +168,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.6,
   },
-  settingsButton: {
+  retryButton: {
     marginTop: 20,
     minWidth: 200,
   },
-  retryButton: {
-    marginTop: 12,
-    minWidth: 200,
+  helpSection: {
+    marginTop: 24,
+    marginBottom: 8,
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    maxWidth: '90%',
+  },
+  helpTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  helpText: {
+    fontSize: 14,
+    lineHeight: 20,
+    opacity: 0.8,
   },
 });

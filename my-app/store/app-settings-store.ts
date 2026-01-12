@@ -29,7 +29,7 @@ export interface AppSettings {
   autoConnect: boolean;
   showCharacterList: boolean;
   defaultChatId: string | null;
-  serverUrl: string; // 서버 URL
+  serverUrl: string | null; // 서버 URL (자동 감지로 설정됨)
   serverSettings?: ServerSettings; // 서버 설정 (SillyTavern)
 }
 
@@ -59,7 +59,7 @@ const defaultSettings: AppSettings = {
   autoConnect: false,
   showCharacterList: true,
   defaultChatId: null,
-  serverUrl: 'http://192.168.0.197:8001', // 기본값: PC의 로컬 IP (사용자가 변경 가능)
+  serverUrl: '', // 자동 감지로 설정됨
 };
 
 const STORAGE_KEY = '@app_settings';

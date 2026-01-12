@@ -7,10 +7,14 @@ import { useAppSettingsStore } from '@/store/app-settings-store';
 
 /**
  * 서버 URL 가져오기
+ * @throws {Error} 서버 URL이 설정되지 않은 경우
  */
 function getBaseUrl(): string {
   const settings = useAppSettingsStore.getState().settings;
-  return settings.serverUrl || 'http://192.168.0.197:8001';
+  if (!settings.serverUrl) {
+    throw new Error('서버가 연결되지 않았습니다. 같은 Wi-Fi 네트워크에 연결되어 있는지 확인해주세요.');
+  }
+  return settings.serverUrl;
 }
 
 /**
