@@ -1165,8 +1165,28 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     const chatItem = chatHistory[i];
                     if (chatItem.extra && typeof chatItem.extra === 'object' && chatItem.extra.memory) {
                         summary = chatItem.extra.memory;
+                        console.log(`[prepare-messages] Summary 로드됨 (index ${i}):`, {
+                            summaryLength: summary.length,
+                            summaryPreview: summary.substring(0, 100),
+                            chatItemExtra: chatItem.extra
+                        });
                         break;
                     }
+                }
+                
+                // 디버깅: Summary가 없는 경우 채팅 히스토리 확인
+                if (!summary) {
+                    console.log('[prepare-messages] Summary를 찾을 수 없음. 채팅 히스토리 확인:', {
+                        chatHistoryLength: chatHistory.length,
+                        hasExtraFields: chatHistory.some(item => item.extra),
+                        extraFieldsCount: chatHistory.filter(item => item.extra).length,
+                        sampleItems: chatHistory.slice(-5).map((item, idx) => ({
+                            index: chatHistory.length - 5 + idx,
+                            hasExtra: !!item.extra,
+                            extraKeys: item.extra ? Object.keys(item.extra) : [],
+                            hasMemory: !!(item.extra && item.extra.memory)
+                        }))
+                    });
                 }
             }
         }
@@ -1401,6 +1421,13 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 }
                 messagesSinceLastSummary++;
             }
+            
+            console.log('[prepare-messages] Summary 생성 조건 확인:', {
+                promptInterval: memorySettings.promptInterval,
+                messagesSinceLastSummary,
+                shouldGenerate: messagesSinceLastSummary >= memorySettings.promptInterval,
+                chatHistoryLength: chatHistory.length
+            });
             
             // Generate summary if enough messages
             if (messagesSinceLastSummary >= memorySettings.promptInterval) {
@@ -1902,7 +1929,14 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
                 const cardName = characterDirName;
                 await trySaveChat(chatHistory, chatFilePath, false, handle, cardName, directories.backups);
                 
-                console.log(`[generateSummaryForChat] Summary saved at index ${saveIndex}`);
+                console.log(`[generateSummaryForChat] Summary saved at index ${saveIndex}:`, {
+                    saveIndex,
+                    chatHistoryLength: chatHistory.length,
+                    summaryLength: generatedSummary.length,
+                    summaryPreview: generatedSummary.substring(0, 100),
+                    savedExtra: chatHistory[saveIndex].extra,
+                    filePath: chatFilePath
+                });
                 return generatedSummary;
             } else {
                 console.warn('[generateSummaryForChat] Cannot save summary: invalid save index');

@@ -194,6 +194,16 @@ class ApiClient {
       // oai_settings에서 채팅 완성 관련 설정 가져오기
       const oaiSettings = settings.oai_settings || {};
       
+      // extension_settings 확인 (Summary 설정 등)
+      const extensionSettings = settings.extension_settings || {};
+      if (extensionSettings.memory) {
+        console.log('[API] Summary 설정 동기화:', {
+          promptInterval: extensionSettings.memory.promptInterval,
+          source: extensionSettings.memory.source,
+          template: extensionSettings.memory.template
+        });
+      }
+      
       // 앱 설정 동기화
       if (settings.mobile_app) {
         useAppSettingsStore.getState().syncFromServer(settings.mobile_app);
@@ -201,6 +211,7 @@ class ApiClient {
       
       // 서버 설정 저장 (채팅 생성에 사용) - oai_settings 포함
       // oai_settings의 설정들을 최상위 레벨로 병합하여 저장
+      // extension_settings도 포함됨 (서버에서 직접 읽지만, 앱에서도 참조 가능하도록)
       const serverSettings = {
         ...settings,
         ...oaiSettings, // oai_settings의 설정들을 최상위로 병합
