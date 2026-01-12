@@ -114,21 +114,34 @@ SillyTavern React Native 앱의 코드 품질을 분석하고 리팩토링이 �
 
 ---
 
-### 1.2 타임아웃 값 하드코딩
-**위치**: `lib/api/client.ts`
+### 1.2 타임아웃 값 하드코딩 ✅ 완료
+**위치**: `lib/api/client.ts`, `utils/server-discovery.ts`
+**상태**: 완료 (2024년)
 **문제점**:
-- `5000` (5초) - CSRF 토큰: 86라인
-- `8000` (8초) - 설정 동기화: 163라인
-- `10000` (10초) - API 요청: 22, 232라인
-- `60000` (60초) - 채팅 생성: 379라인
-- `5000` (5초) - 설정 체크 간격: 59라인
+- `5000` (5초) - CSRF 토큰: 90라인
+- `8000` (8초) - 설정 동기화: 167라인
+- `10000` (10초) - API 요청: 26, 236라인
+- `60000` (60초) - 채팅 생성: 383라인
+- `5000` (5초) - 설정 체크 간격: 63라인
+- `2000` (2초) - 서버 스캔 타임아웃: `utils/server-discovery.ts` 7라인
 
 **영향**:
 - 타임아웃 값 변경 시 여러 곳 수정 필요
 - 일관성 없는 값 사용
 
 **권장 사항**:
-- `constants/api.ts`에 `TIMEOUTS` 객체로 상수화
+- ✅ `constants/api.ts`에 `TIMEOUTS` 객체로 상수화
+
+**완료된 작업**:
+- ✅ `lib/api/client.ts`: 모든 하드코딩된 타임아웃 값을 `TIMEOUTS` 상수로 교체
+  - `fetchWithTimeout` 기본값: `TIMEOUTS.API_REQUEST`
+  - `settingsCheckInterval`: `SETTINGS_SYNC_INTERVAL`
+  - CSRF 토큰: `TIMEOUTS.CSRF_TOKEN`
+  - 설정 동기화: `TIMEOUTS.SETTINGS_SYNC`
+  - API 요청: `TIMEOUTS.API_REQUEST`
+  - 채팅 생성: `TIMEOUTS.CHAT_GENERATION`
+- ✅ `utils/server-discovery.ts`: 서버 스캔 타임아웃을 `TIMEOUTS.SERVER_SCAN`으로 교체
+- ✅ `constants/api.ts`: 모든 타임아웃 상수 정의 완료
 
 ---
 

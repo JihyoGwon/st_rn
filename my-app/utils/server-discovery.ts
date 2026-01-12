@@ -3,8 +3,10 @@
  * 로컬 네트워크에서 SillyTavern 서버를 찾습니다.
  */
 
-const SERVER_PORT = 8001;
-const SCAN_TIMEOUT = 2000; // 각 IP당 2초 타임아웃
+import { DEFAULT_SERVER_PORT, TIMEOUTS } from '@/constants/api';
+
+const SERVER_PORT = DEFAULT_SERVER_PORT;
+const SCAN_TIMEOUT = TIMEOUTS.SERVER_SCAN;
 const COMMON_SUBNETS = [
   '192.168.1',   // 가장 일반적인 서브넷
   '192.168.0',   // 두 번째로 일반적인 서브넷

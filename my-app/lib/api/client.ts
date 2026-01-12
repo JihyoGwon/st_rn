@@ -4,6 +4,7 @@
  */
 
 import { useAppSettingsStore } from '@/store/app-settings-store';
+import { TIMEOUTS, SETTINGS_SYNC_INTERVAL } from '@/constants/api';
 
 /**
  * 서버 URL 가져오기
@@ -23,7 +24,7 @@ function getBaseUrl(): string {
 function fetchWithTimeout(
   url: string,
   options: RequestInit = {},
-  timeout: number = 10000 // 10초
+  timeout: number = TIMEOUTS.API_REQUEST
 ): Promise<Response> {
   return Promise.race([
     fetch(url, options).catch((error) => {
@@ -60,7 +61,7 @@ interface ApiResponse<T> {
 class ApiClient {
   private csrfToken: string | null = null;
   private lastSettingsCheck: number = 0;
-  private settingsCheckInterval = 5000; // 5초마다 설정 확인
+  private settingsCheckInterval = SETTINGS_SYNC_INTERVAL;
   
   /**
    * 설정 동기화 (공개 메서드 - 외부에서 호출 가능)
@@ -87,7 +88,7 @@ class ApiClient {
           method: 'GET',
           credentials: 'include', // 쿠키 포함
         },
-        5000 // 5초 타임아웃
+        TIMEOUTS.CSRF_TOKEN
       );
       console.log('[API] CSRF 토큰 응답 상태:', response.status, response.statusText);
       if (!response.ok) {
@@ -164,7 +165,7 @@ class ApiClient {
           },
           credentials: 'include',
         },
-        8000
+        TIMEOUTS.SETTINGS_SYNC
       );
 
       if (!response.ok) {
@@ -233,7 +234,7 @@ class ApiClient {
           },
           credentials: 'include',
         },
-        10000 // API 요청은 10초 타임아웃
+        TIMEOUTS.API_REQUEST
       );
 
       if (!response.ok) {
@@ -380,7 +381,7 @@ class ApiClient {
         credentials: 'include',
         body: JSON.stringify(requestParams),
       },
-      60000 // 생성은 60초 타임아웃
+      TIMEOUTS.CHAT_GENERATION
     );
 
     if (!response.ok) {
