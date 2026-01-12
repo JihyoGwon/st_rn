@@ -145,17 +145,25 @@ SillyTavern React Native 앱의 코드 품질을 분석하고 리팩토링이 �
 
 ---
 
-### 1.3 포트 번호 하드코딩
-**위치**: `utils/server-discovery.ts`
+### 1.3 포트 번호 하드코딩 ✅ 완료
+**위치**: `utils/server-discovery.ts`, `store/app-settings-store.ts`
+**상태**: 완료 (2024년)
 **문제점**:
-- `SERVER_PORT = 8001` (6라인)
+- `SERVER_PORT = 8001` (6라인) - `utils/server-discovery.ts`
 - `DEFAULT_CHARACTER_PORT = 8000` (character-card.tsx에서 암묵적 사용)
+- `http://${foundIP}:8001` - `store/app-settings-store.ts` 163라인
 
 **영향**:
 - 포트 변경 시 여러 파일 수정 필요
 
 **권장 사항**:
-- 상수 파일로 통합
+- ✅ 상수 파일로 통합
+
+**완료된 작업**:
+- ✅ `utils/server-discovery.ts`: `SERVER_PORT`를 `DEFAULT_SERVER_PORT` 상수로 교체
+- ✅ `store/app-settings-store.ts`: 하드코딩된 `:8001`을 `DEFAULT_SERVER_PORT` 상수로 교체
+- ✅ `components/character-card.tsx`: 이미 `DEFAULT_CHARACTER_PORT` 상수 사용 중 (1.1에서 완료)
+- ✅ `constants/api.ts`: 모든 포트 상수 정의 완료 (`DEFAULT_SERVER_PORT`, `DEFAULT_CHARACTER_PORT`)
 
 ---
 

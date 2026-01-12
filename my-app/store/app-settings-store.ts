@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { discoverServer, validateServerUrl } from '@/utils/server-discovery';
+import { DEFAULT_SERVER_PORT } from '@/constants/api';
 
 /**
  * 서버 설정 타입 (SillyTavern 서버 설정)
@@ -160,7 +161,7 @@ export const useAppSettingsStore = create<AppSettingsStore>((set, get) => ({
       const foundIP = await discoverServer();
       
       if (foundIP) {
-        const newUrl = `http://${foundIP}:8001`;
+        const newUrl = `http://${foundIP}:${DEFAULT_SERVER_PORT}`;
         get().setServerUrl(newUrl);
         console.log(`[AppSettings] 서버 자동 감지 성공: ${newUrl}`);
         return foundIP;
