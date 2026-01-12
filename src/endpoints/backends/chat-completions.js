@@ -426,14 +426,6 @@ async function sendMakerSuiteRequest(request, response) {
     const requestImages = Boolean(request.body.request_images);
     const reasoningEffort = String(request.body.reasoning_effort || '');
     const includeReasoning = Boolean(request.body.include_reasoning);
-    
-    // 디버깅: reasoning 설정 확인
-    console.log('[Google Vertex AI] Reasoning 설정:', {
-      reasoning_effort: reasoningEffort,
-      include_reasoning: includeReasoning,
-      request_body_reasoning_effort: request.body.reasoning_effort,
-      request_body_include_reasoning: request.body.include_reasoning,
-    });
     const aspectRatio = String(request.body.request_image_aspect_ratio);
     const imageSize = String(request.body.request_image_resolution);
     const isGemma = model.includes('gemma');
@@ -537,13 +529,6 @@ async function sendMakerSuiteRequest(request, response) {
             const thinkingConfig = { includeThoughts: includeReasoning };
 
             const thinkingBudget = calculateGoogleBudgetTokens(generationConfig.maxOutputTokens, reasoningEffort, model);
-            console.log('[Google Vertex AI] Thinking Budget 계산:', {
-                model,
-                maxOutputTokens: generationConfig.maxOutputTokens,
-                reasoningEffort,
-                thinkingBudget,
-                thinkingBudgetType: typeof thinkingBudget,
-            });
             
             if (typeof thinkingBudget === 'number' && Number.isInteger(thinkingBudget)) {
                 thinkingConfig.thinkingBudget = thinkingBudget;
@@ -555,14 +540,11 @@ async function sendMakerSuiteRequest(request, response) {
 
             // Vertex doesn't allow mixing disabled thinking with includeThoughts
             if (useVertexAi && thinkingBudget === 0 && thinkingConfig.includeThoughts) {
-                console.info('Thinking budget is 0, but includeThoughts is true. Thoughts will not be included in the response.');
+                console.info('[Google Vertex AI] Thinking budget is 0, but includeThoughts is true. Thoughts will not be included.');
                 thinkingConfig.includeThoughts = false;
             }
 
-            console.log('[Google Vertex AI] Thinking Config 최종값:', JSON.stringify(thinkingConfig, null, 2));
             generationConfig.thinkingConfig = thinkingConfig;
-        } else {
-            console.log('[Google Vertex AI] 모델이 thinking config를 지원하지 않음:', model);
         }
 
         let body = {

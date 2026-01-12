@@ -77,12 +77,6 @@ class ApiClient {
 
     try {
       const baseUrl = getBaseUrl();
-      console.log('[API] CSRF 토큰 요청:', `${baseUrl}/csrf-token`);
-      console.log('[API] 요청 옵션:', {
-        method: 'GET',
-        credentials: 'include',
-        timeout: 5000,
-      });
       const response = await fetchWithTimeout(
         `${baseUrl}/csrf-token`,
         {
@@ -179,19 +173,6 @@ class ApiClient {
       // oai_settings에서 채팅 완성 관련 설정 가져오기
       const oaiSettings = settings.oai_settings || {};
       
-      // 디버깅: oai_settings 확인
-      if (__DEV__) {
-        console.log('[API] oai_settings 키들:', Object.keys(oaiSettings).slice(0, 30));
-        console.log('[API] oai_settings에서 찾은 설정:', {
-          chat_completion_source: oaiSettings.chat_completion_source,
-          vertexai_auth_mode: oaiSettings.vertexai_auth_mode,
-          vertexai_model: oaiSettings.vertexai_model,
-          vertexai_region: oaiSettings.vertexai_region,
-          show_thoughts: oaiSettings.show_thoughts,
-          reasoning_effort: oaiSettings.reasoning_effort,
-        });
-      }
-      
       // 앱 설정 동기화
       if (settings.mobile_app) {
         useAppSettingsStore.getState().syncFromServer(settings.mobile_app);
@@ -237,7 +218,6 @@ class ApiClient {
     const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
     try {
-      console.log('[API] 요청:', url);
       const response = await fetchWithTimeout(
         url,
         {
