@@ -2,18 +2,18 @@ import { create } from 'zustand';
 import { apiClient } from '@/lib/api/client';
 import { useAppSettingsStore } from './app-settings-store';
 import { useCharacterStore } from './character-store';
+import type {
+  ServerChatMessage,
+  ServerChatData,
+  CharacterResponse,
+  ChatCompletionMessage,
+  ChatCompletionParams,
+  ChatCompletionResponse,
+  PrepareMessagesResponse,
+} from '@/types/api';
 
-/**
- * 서버에서 받는 채팅 메시지 타입
- */
-export interface ServerChatMessage {
-  name?: string;
-  mes?: string;
-  is_user?: boolean;
-  character_name?: string;
-  send_date?: string;
-  [key: string]: any;
-}
+// ServerChatMessage는 types/api.ts로 이동했지만 호환성을 위해 재export
+export type { ServerChatMessage } from '@/types/api';
 
 /**
  * 앱에서 사용하는 채팅 메시지 타입
@@ -69,7 +69,7 @@ function convertAppMessagesToServerFormat(
   userName: string,
   characterName: string,
   chatId: string
-): any[] {
+): ServerChatData {
   // 첫 번째 줄: 메타데이터
   const metadata = {
     chat_metadata: {
@@ -131,7 +131,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (isNewChat) {
         // Character 정보 가져오기 (API로 직접 가져오기)
         try {
-          const characterData = await apiClient.post<any>('/api/characters/get', {
+          const characterData = await apiClient.post<CharacterResponse>('/api/characters/get', {
             avatar_url: characterId,
           });
           
@@ -189,7 +189,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (!firstMessage.is_user && (firstMessage.name || firstMessage.character_name)) {
           // Character 정보 가져와서 first_mes와 비교
           try {
-            const characterData = await apiClient.post<any>('/api/characters/get', {
+            const characterData = await apiClient.post<CharacterResponse>('/api/characters/get', {
               avatar_url: characterId,
             });
             
@@ -264,7 +264,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       get().addMessage(text, true);
       
       // 2. 메시지 준비
-      let prepareResult;
+      let prepareResult: PrepareMessagesResponse;
       try {
         prepareResult = await apiClient.prepareMessages({
           chat_id: chatId,
@@ -316,8 +316,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const maxTokens = prepareResult.generate_data?.max_tokens ?? serverSettings.openai_max_tokens ?? 2000;
       
       // prepareResult.generate_data에 이미 설정이 있을 수 있으므로, 서버 설정으로 덮어쓰기
-      const generateData = {
+      const generateData: ChatCompletionParams = {
         ...prepareResult.generate_data,
+        messages: prepareResult.generate_data?.messages || [],
         stream: false,
         chat_completion_source: chatCompletionSource, // 서버 설정 우선
         model: model, // 서버 설정 우선
@@ -343,7 +344,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       console.log('[ChatStore] ========== 최종 프롬프트 구조 (generateData.messages) ==========');
       console.log('[ChatStore] messages 개수:', generateData.messages?.length || 0);
       if (generateData.messages && Array.isArray(generateData.messages)) {
-        generateData.messages.forEach((msg: any, index: number) => {
+        generateData.messages.forEach((msg: ChatCompletionMessage, index: number) => {
           console.log(`[ChatStore] [${index + 1}] role: ${msg.role}, content: ${msg.content?.substring(0, 100)}${msg.content?.length > 100 ? '...' : ''}`);
           if (msg.identifier) {
             console.log(`[ChatStore]      identifier: ${msg.identifier}`);
@@ -352,7 +353,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       console.log('[ChatStore] ===============================================================');
       
-      const completionResponse = await apiClient.generateChatCompletion(generateData);
+      const completionResponse: ChatCompletionResponse = await apiClient.generateChatCompletion(generateData);
       
       // 4. 응답 파싱
       let aiResponse = '';

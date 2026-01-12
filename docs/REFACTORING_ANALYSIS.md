@@ -169,15 +169,16 @@ SillyTavern React Native 앱의 코드 품질을 분석하고 리팩토링이 �
 
 ## 2. 타입 안정성 문제
 
-### 2.1 `any` 타입 남용
+### 2.1 `any` 타입 남용 ✅ 완료
 **위치**: 여러 파일
+**상태**: 완료 (2024년)
 **문제점**:
 
 #### `lib/api/client.ts`
-- `getChatHistory()`: `Promise<any[]>` (292라인)
-- `saveChat()`: `chat: any[]`, `chatMetadata?: any` (305-306라인)
-- `prepareMessages()`: `Promise<any>` (339라인)
-- `generateChatCompletion()`: `messages: any[]`, `Promise<any>` (346-356라인)
+- `getChatHistory()`: `Promise<any[]>` (297라인)
+- `saveChat()`: `chat: any[]`, `chatMetadata?: any` (310-311라인)
+- `prepareMessages()`: `Promise<any>` (344라인)
+- `generateChatCompletion()`: `messages: any[]`, `Promise<any>` (351-361라인)
 
 #### `store/chat-store.ts`
 - `ServerChatMessage`: `[key: string]: any` (15라인)
@@ -191,9 +192,30 @@ SillyTavern React Native 앱의 코드 품질을 분석하고 리팩토링이 �
 - IDE 자동완성 및 리팩토링 지원 부족
 
 **권장 사항**:
-- `types/api.ts` 파일 생성하여 타입 정의
-- 서버 응답 타입 명시적 정의
-- 제네릭 타입 활용
+- ✅ `types/api.ts` 파일 생성하여 타입 정의
+- ✅ 서버 응답 타입 명시적 정의
+- ✅ 제네릭 타입 활용
+
+**완료된 작업**:
+- ✅ `types/api.ts` 파일 생성 및 모든 API 관련 타입 정의
+  - `ServerChatMessage`, `ServerChatData`, `ServerChatMetadata`
+  - `CharacterResponse`, `CharacterData`
+  - `PrepareMessagesResponse`
+  - `ChatCompletionMessage`, `ChatCompletionParams`, `ChatCompletionResponse`
+  - `ApiResponse<T>`
+- ✅ `lib/api/client.ts`: 모든 `any` 타입을 구체적 타입으로 교체
+  - `getChatHistory()`: `Promise<ServerChatMessage[]>`
+  - `saveChat()`: `chat: ServerChatData`, `chatMetadata?: Record<string, unknown>`
+  - `prepareMessages()`: `Promise<PrepareMessagesResponse>`
+  - `generateChatCompletion()`: `ChatCompletionParams` 파라미터, `Promise<ChatCompletionResponse>` 반환
+- ✅ `store/chat-store.ts`: 모든 `any` 타입을 구체적 타입으로 교체
+  - `ServerChatMessage`: `[key: string]: unknown`으로 변경 (types/api.ts로 이동)
+  - `convertAppMessagesToServerFormat()`: `ServerChatData` 반환
+  - Character 데이터: `CharacterResponse` 타입 사용
+  - `generateData.messages.forEach`: `ChatCompletionMessage` 타입 사용
+  - `prepareResult`: `PrepareMessagesResponse` 타입 명시
+  - `completionResponse`: `ChatCompletionResponse` 타입 명시
+  - `generateData`: `ChatCompletionParams` 타입 명시
 
 ---
 

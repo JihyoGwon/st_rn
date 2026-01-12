@@ -5,6 +5,14 @@
 
 import { useAppSettingsStore } from '@/store/app-settings-store';
 import { TIMEOUTS, SETTINGS_SYNC_INTERVAL } from '@/constants/api';
+import type {
+  ServerChatMessage,
+  ServerChatData,
+  CharacterResponse,
+  PrepareMessagesResponse,
+  ChatCompletionParams,
+  ChatCompletionResponse,
+} from '@/types/api';
 
 /**
  * 서버 URL 가져오기
@@ -46,14 +54,7 @@ function fetchWithTimeout(
   ]);
 }
 
-/**
- * API 응답 타입
- */
-interface ApiResponse<T> {
-  success?: boolean;
-  error?: boolean;
-  data?: T;
-}
+// ApiResponse는 types/api.ts로 이동
 
 /**
  * API 클라이언트 클래스
@@ -294,8 +295,8 @@ class ApiClient {
   /**
    * 채팅 히스토리 가져오기
    */
-  async getChatHistory(avatarUrl: string, fileName: string): Promise<any[]> {
-    return this.post<any[]>('/api/chats/get', {
+  async getChatHistory(avatarUrl: string, fileName: string): Promise<ServerChatMessage[]> {
+    return this.post<ServerChatMessage[]>('/api/chats/get', {
       avatar_url: avatarUrl,
       file_name: fileName,
     });
@@ -307,8 +308,8 @@ class ApiClient {
   async saveChat(
     avatarUrl: string,
     fileName: string,
-    chat: any[],
-    chatMetadata?: any
+    chat: ServerChatData,
+    chatMetadata?: Record<string, unknown>
   ): Promise<{ ok: boolean }> {
     return this.post<{ ok: boolean }>('/api/chats/save', {
       avatar_url: avatarUrl,
@@ -341,24 +342,14 @@ class ApiClient {
     type?: string;
     regenerate?: boolean;
     swipe_index?: number;
-  }): Promise<any> {
-    return this.post('/api/chats/prepare-messages', params);
+  }): Promise<PrepareMessagesResponse> {
+    return this.post<PrepareMessagesResponse>('/api/chats/prepare-messages', params);
   }
 
   /**
    * 채팅 생성 (스트리밍 또는 비스트리밍)
    */
-  async generateChatCompletion(params: {
-    messages: any[];
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    stream?: boolean;
-    chat_completion_source?: string;
-    reasoning_effort?: string;
-    include_reasoning?: boolean;
-    [key: string]: any; // 기타 파라미터들 허용
-  }): Promise<any> {
+  async generateChatCompletion(params: ChatCompletionParams): Promise<ChatCompletionResponse> {
     const baseUrl = getBaseUrl();
     const token = await this.getCsrfToken();
     const url = `${baseUrl}/api/backends/chat-completions/generate`;
