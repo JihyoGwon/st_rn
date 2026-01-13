@@ -19,6 +19,7 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함) ✅
 - [x] **Phase 1.1**: 캐릭터 월드인포 로드 함수 구현 (`getCharacterWorldInfo`) ✅
 - [x] **Phase 1.2**: 엔트리 수집 로직 구현 (`getSortedEntries`, `getGlobalLore`) ✅
+- [x] **Phase 1.3**: 기본 키워드 매칭 구현 (`checkWorldInfo`) ✅
 
 ### 미구현
 - [ ] 키워드 기반 필터링 (스캔 로직 미구현)
@@ -129,7 +130,7 @@ export function getSortedEntries(directories, characterData, selectedWorldInfo, 
 
 **예상 작업 시간**: 3-4시간
 
-#### 1.3 기본 키워드 매칭 구현
+#### 1.3 기본 키워드 매칭 구현 ✅
 **목표**: Primary Keywords만 사용한 기본 키워드 매칭
 
 **구현 내용**:
@@ -140,13 +141,30 @@ export function getSortedEntries(directories, characterData, selectedWorldInfo, 
 
 **주요 함수**:
 ```javascript
-async function checkWorldInfo(chat, entries, maxContext) {
+function convertChatToText(chatHistory, scanDepth) {
+    // 채팅 히스토리를 검색 가능한 텍스트로 변환
+}
+
+function matchKeyword(text, keyword, caseSensitive) {
+    // 기본 키워드 매칭 (대소문자 구분 옵션)
+}
+
+export function checkWorldInfo(entries, chatHistory, scanDepth) {
     // 1. 채팅 내용을 스캔 가능한 텍스트로 변환
-    // 2. 각 엔트리의 키워드 검색
+    // 2. 각 엔트리의 Primary Keywords 검색
     // 3. 매칭된 엔트리 활성화
     // 4. 활성화된 엔트리 반환
 }
 ```
+
+**구현 완료**:
+- ✅ `src/endpoints/worldinfo.js`에 `convertChatToText` 함수 추가
+- ✅ `src/endpoints/worldinfo.js`에 `matchKeyword` 함수 추가
+- ✅ `src/endpoints/worldinfo.js`에 `checkWorldInfo` 함수 추가
+- ✅ `src/endpoints/chats.js`에서 채팅 히스토리 로드 후 `checkWorldInfo` 호출
+- ✅ Primary Keywords 매칭으로 엔트리 활성화
+- ✅ `constant` 엔트리는 항상 활성화
+- ✅ `disable` 엔트리는 제외
 
 **예상 작업 시간**: 4-5시간
 

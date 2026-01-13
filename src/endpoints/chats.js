@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1188,19 +1188,36 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             );
 
             if (sortedEntries && sortedEntries.length > 0) {
-                // Simple formatting: combine all entries
-                // TODO: Implement proper world info scanning based on chat history
-                const worldInfoText = sortedEntries
-                    .filter(entry => entry && entry.content)
-                    .map(entry => {
-                        const keys = entry.key ? entry.key.join(', ') : '';
-                        return keys ? `${keys}: ${entry.content}` : entry.content;
-                    })
-                    .join('\n\n');
-                
-                // For now, put all world info in worldInfoBefore
-                // TODO: Implement proper before/after positioning based on entry position
-                worldInfoBefore = worldInfoText;
+                // Load chat history for keyword matching
+                let chatHistory = [];
+                if (chat_id) {
+                    const characterDirName = characterFileName.replace('.png', '');
+                    const chatDirectory = path.join(request.user.directories.chats, characterDirName);
+                    const chatFileName = `${chat_id}.jsonl`;
+                    const chatFilePath = path.join(chatDirectory, sanitize(chatFileName));
+                    
+                    if (fs.existsSync(chatFilePath)) {
+                        chatHistory = getChatData(chatFilePath);
+                    }
+                }
+
+                // Check World Info entries against chat history (basic keyword matching)
+                const activatedEntries = checkWorldInfo(sortedEntries, chatHistory, 100);
+
+                if (activatedEntries && activatedEntries.length > 0) {
+                    // Format activated entries
+                    const worldInfoText = activatedEntries
+                        .filter(entry => entry && entry.content)
+                        .map(entry => {
+                            const keys = entry.key ? entry.key.join(', ') : '';
+                            return keys ? `${keys}: ${entry.content}` : entry.content;
+                        })
+                        .join('\n\n');
+                    
+                    // For now, put all world info in worldInfoBefore
+                    // TODO: Implement proper before/after positioning based on entry position
+                    worldInfoBefore = worldInfoText;
+                }
             }
         } catch (error) {
             console.warn('[prepare-messages] Failed to load world info:', error);

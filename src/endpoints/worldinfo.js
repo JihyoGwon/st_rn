@@ -189,6 +189,110 @@ export function getSortedEntries(directories, characterData, selectedWorldInfo =
     }
 }
 
+/**
+ * Converts chat history to a searchable text string
+ * @param {Array<object>} chatHistory Array of chat messages
+ * @param {number} scanDepth Maximum depth to scan (number of messages from the end)
+ * @returns {string} Combined text from chat messages
+ */
+function convertChatToText(chatHistory, scanDepth = 100) {
+    if (!chatHistory || chatHistory.length === 0) {
+        return '';
+    }
+
+    // Get messages from the end (most recent first in reverse order)
+    const messagesToScan = chatHistory.slice(-scanDepth);
+    
+    // Extract message text (skip system messages)
+    const textParts = messagesToScan
+        .filter(item => item && item.mes && typeof item.mes === 'string' && !item.is_system)
+        .map(item => item.mes.trim())
+        .filter(text => text.length > 0);
+
+    return textParts.join('\n');
+}
+
+/**
+ * Simple keyword matching (basic version for Phase 1.3)
+ * @param {string} text Text to search in
+ * @param {string} keyword Keyword to search for
+ * @param {boolean} caseSensitive Whether to match case (default: false)
+ * @returns {boolean} True if keyword is found
+ */
+function matchKeyword(text, keyword, caseSensitive = false) {
+    if (!text || !keyword) {
+        return false;
+    }
+
+    const searchText = caseSensitive ? text : text.toLowerCase();
+    const searchKeyword = caseSensitive ? keyword : keyword.toLowerCase();
+
+    return searchText.includes(searchKeyword);
+}
+
+/**
+ * Checks World Info entries against chat history and returns activated entries
+ * Basic version: Only checks Primary Keywords
+ * @param {Array<object>} entries Array of World Info entries
+ * @param {Array<object>} chatHistory Array of chat messages
+ * @param {number} scanDepth Maximum depth to scan (default: 100)
+ * @returns {Array<object>} Array of activated entries
+ */
+export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
+    if (!entries || entries.length === 0) {
+        return [];
+    }
+
+    // Convert chat history to searchable text
+    const chatText = convertChatToText(chatHistory, scanDepth);
+
+    if (!chatText) {
+        // No chat text to search, return empty array
+        return [];
+    }
+
+    const activatedEntries = [];
+
+    for (const entry of entries) {
+        // Skip entries without keys
+        if (!entry.key || !Array.isArray(entry.key) || entry.key.length === 0) {
+            continue;
+        }
+
+        // Skip disabled entries
+        if (entry.disable === true) {
+            continue;
+        }
+
+        // Check constant entries (always activated)
+        if (entry.constant === true) {
+            activatedEntries.push(entry);
+            continue;
+        }
+
+        // Check Primary Keywords
+        let hasMatch = false;
+        for (const keyword of entry.key) {
+            if (!keyword || typeof keyword !== 'string') {
+                continue;
+            }
+
+            // Basic keyword matching (case-insensitive by default)
+            // TODO: Add case sensitivity and whole word matching in Phase 3
+            if (matchKeyword(chatText, keyword.trim(), false)) {
+                hasMatch = true;
+                break;
+            }
+        }
+
+        if (hasMatch) {
+            activatedEntries.push(entry);
+        }
+    }
+
+    return activatedEntries;
+}
+
 export const router = express.Router();
 
 router.post('/list', async (request, response) => {
