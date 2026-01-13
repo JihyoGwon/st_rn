@@ -35,31 +35,86 @@
 ## 2. 월드 인포 (World Info / Lorebook)
 
 ### ✅ 필수 항목 (완전한 기능 사용 시)
+
+#### 2.1 기본 스캔 기능
 - [ ] 월드 인포 파일 로드
 - [ ] 월드 인포 엔트리 스캔 (`checkWorldInfo` 함수)
 - [ ] 키워드 매칭 (Primary Keywords)
 - [ ] 보조 키워드 (Secondary Keywords)
 - [ ] 키워드 로직 (AND ANY, AND ALL, NOT ANY, NOT ALL)
-- [ ] 스캔 깊이 (Scan Depth)
-- [ ] 대소문자 구분 (Case-Sensitive)
-- [ ] 전체 단어 매칭 (Whole Words)
-- [ ] 그룹 스코어링 (Group Scoring)
-- [ ] 우선순위 (Priority)
-- [ ] 전략 (Strategy: ↑ Char, ↓ Char 등)
-- [ ] 위치 (Position: Before, After, At Depth)
-- [ ] 깊이 (Depth)
-- [ ] 트리거 확률 (Trigger %)
-- [ ] 캐릭터/태그 필터링
-- [ ] 생성 트리거 필터링 (Normal, Continue, Impersonate, Swipe)
+- [ ] 스캔 깊이 (Scan Depth) - 전역 설정
+- [ ] 엔트리별 스캔 깊이 (scanDepth) - 엔트리별 오버라이드
+- [ ] 대소문자 구분 (Case-Sensitive) - 전역 설정
+- [ ] 엔트리별 대소문자 구분 (caseSensitive) - 엔트리별 오버라이드
+- [ ] 전체 단어 매칭 (Whole Words) - 전역 설정
+- [ ] 엔트리별 전체 단어 매칭 (matchWholeWords) - 엔트리별 오버라이드
+- [ ] 그룹 스코어링 (Group Scoring) - 전역 설정
+- [ ] 엔트리별 그룹 스코어링 (useGroupScoring) - 엔트리별 오버라이드
+
+#### 2.2 엔트리 속성
+- [ ] 우선순위 (Priority / Order)
+- [ ] 전략 (Strategy: ↑ Char, ↓ Char 등) - `world_info_character_strategy`
+- [ ] 위치 (Position: Before, After, At Depth, ANTop, ANBottom, Outlet)
+- [ ] 깊이 (Depth) - 엔트리별 depth 설정
+- [ ] 역할 (Role: system, user, assistant) - `extension_prompt_roles`
+- [ ] 트리거 확률 (Trigger % / Probability)
+- [ ] 확률 사용 여부 (Use Probability)
+- [ ] 코멘트 (Comment)
+- [ ] Add Memo (addMemo)
+
+#### 2.3 필터링 및 매칭
+- [ ] 캐릭터 이름 필터링 (characterFilterNames)
+- [ ] 캐릭터 태그 필터링 (characterFilterTags)
+- [ ] 캐릭터 필터 제외 모드 (characterFilterExclude)
+- [ ] 생성 트리거 필터링 (triggers: Normal, Continue, Impersonate, Swipe)
+- [ ] Persona Description 매칭 (matchPersonaDescription)
+- [ ] Character Description 매칭 (matchCharacterDescription)
+- [ ] Character Personality 매칭 (matchCharacterPersonality)
+- [ ] Character Depth Prompt 매칭 (matchCharacterDepthPrompt)
+- [ ] Scenario 매칭 (matchScenario)
+- [ ] Creator Notes 매칭 (matchCreatorNotes)
+
+#### 2.4 그룹 및 Inclusion
 - [ ] Inclusion Group
-- [ ] Sticky (항상 활성화)
-- [ ] Cooldown (재사용 대기 시간)
-- [ ] Delay (지연 활성화)
-- [ ] 재귀 스캔 (Recursion)
+- [ ] 그룹 (Group)
+- [ ] 그룹 오버라이드 (Group Override)
+- [ ] 그룹 가중치 (Group Weight)
+
+#### 2.5 활성화 제어
+- [ ] Constant (항상 활성화)
+- [ ] Vectorized (벡터 기반 검색) - 벡터 확장 기능과 연동
+- [ ] Sticky (지속 활성화) - 엔트리별 sticky 값
+- [ ] Cooldown (재사용 대기 시간) - 엔트리별 cooldown 값
+- [ ] Delay (지연 활성화) - 엔트리별 delay 값
+- [ ] Decorators (@@activate, @@dont_activate)
+- [ ] Disable (비활성화)
+
+#### 2.6 재귀 및 예산
+- [ ] 재귀 스캔 (Recursion) - 전역 설정
+- [ ] 재귀 제외 (Exclude Recursion)
+- [ ] 재귀 방지 (Prevent Recursion)
+- [ ] 재귀 지연 (Delay Until Recursion)
+- [ ] 최대 재귀 단계 (Max Recursion Steps)
 - [ ] 최소 활성화 수 (Min Activations)
-- [ ] 토큰 예산 관리 (Budget)
-- [ ] 월드 인포 포맷팅 (`formatWorldInfo`)
+- [ ] 최소 활성화 깊이 최대값 (Min Activations Depth Max)
+- [ ] 토큰 예산 관리 (Budget %) - 전역 설정
+- [ ] 예산 한도 (Budget Cap)
+- [ ] 예산 무시 (Ignore Budget)
+
+#### 2.7 출력 타입
 - [ ] worldInfoBefore / worldInfoAfter 분리
+- [ ] Example Messages (EMEntries)
+- [ ] Depth Entries (WIDepthEntries)
+- [ ] Authors Note Before (ANBeforeEntries)
+- [ ] Authors Note After (ANAfterEntries)
+- [ ] Outlet Entries (outletEntries) - outletName 기반
+- [ ] 월드 인포 포맷팅 (`formatWorldInfo`)
+
+#### 2.8 기타
+- [ ] Automation ID (automationId)
+- [ ] 이름 포함 여부 (Include Names)
+- [ ] 오버플로우 알림 (Overflow Alert)
+- [ ] Character Book (character_book) - 캐릭터 카드에 임베드된 로어북
 
 ### ⚠️ 간소화 버전 (기본 기능만)
 - [x] 월드 인포 파일 로드 (`/api/chats/prepare-messages`에서 처리) ✅
