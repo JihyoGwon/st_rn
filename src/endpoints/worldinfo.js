@@ -694,6 +694,49 @@ export async function syncWorldInfoVectors(entries, vectorSettings, directories,
     let totalAdded = 0;
     let totalDeleted = 0;
     const syncedWorlds = [];
+    const failedWorlds = [];
+    const errors = [];
+
+    /**
+     * Gets a user-friendly error message for a given error
+     * @param {Error} error Error object
+     * @returns {string} User-friendly error message
+     */
+    function getErrorMessage(error) {
+        if (!error) {
+            return 'Unknown error';
+        }
+
+        // Check for specific error causes
+        if (error.cause) {
+            switch (error.cause) {
+                case 'api_key_missing':
+                    return 'API key missing. Check vector extension settings.';
+                case 'api_url_missing':
+                    return 'API URL missing. Check vector extension settings.';
+                case 'api_model_missing':
+                    return 'Vectorization Source Model is required, but not set.';
+                case 'extras_module_missing':
+                    return 'Extras API must provide an "embeddings" module.';
+                default:
+                    break;
+            }
+        }
+
+        // Check error message for common patterns
+        const errorMessage = error.message || String(error);
+        if (errorMessage.includes('API key') || errorMessage.includes('authentication')) {
+            return 'Authentication failed. Check API key in vector extension settings.';
+        }
+        if (errorMessage.includes('network') || errorMessage.includes('ECONNREFUSED') || errorMessage.includes('timeout')) {
+            return 'Network error. Check vector extension API connection.';
+        }
+        if (errorMessage.includes('model') || errorMessage.includes('embedding')) {
+            return 'Model or embedding configuration error. Check vector extension settings.';
+        }
+
+        return errorMessage || 'Unknown error occurred';
+    }
 
     // Synchronize each world
     for (const world in groupedEntries) {
@@ -701,8 +744,20 @@ export async function syncWorldInfoVectors(entries, vectorSettings, directories,
             const worldEntries = groupedEntries[world];
             const collectionId = `world_${getStringHash(world)}`;
 
+            console.log(`[WI] Synchronizing world "${world}" (${worldEntries.length} entries, collection: ${collectionId})`);
+
             // Get existing hashes from vector index
-            const hashesInCollection = await getSavedHashesForWorld(world, vectorSource, sourceSettings, directories);
+            let hashesInCollection = [];
+            try {
+                hashesInCollection = await getSavedHashesForWorld(world, vectorSource, sourceSettings, directories);
+                console.log(`[WI] Found ${hashesInCollection.length} existing entries in vector index for world "${world}"`);
+            } catch (error) {
+                const errorMsg = getErrorMessage(error);
+                console.error(`[WI] Failed to get saved hashes for world "${world}": ${errorMsg}`, error);
+                errors.push({ world, operation: 'get_hashes', error: errorMsg, details: error });
+                failedWorlds.push(world);
+                continue; // Skip this world if we can't get existing hashes
+            }
 
             // Calculate current entry hashes
             const currentHashes = worldEntries.map(entry => getStringHash(entry.content));
@@ -716,6 +771,8 @@ export async function syncWorldInfoVectors(entries, vectorSettings, directories,
             // Find deleted entries (in existing hashes but not in current entries)
             const deletedHashes = hashesInCollection.filter(hash => !currentHashes.includes(hash));
 
+            console.log(`[WI] World "${world}": ${newEntries.length} new entries, ${deletedHashes.length} deleted entries`);
+
             // Insert new entries
             if (newEntries.length > 0) {
                 try {
@@ -727,10 +784,20 @@ export async function syncWorldInfoVectors(entries, vectorSettings, directories,
 
                     await insertVectorItems(directories, collectionId, vectorSource, sourceSettings, itemsToInsert);
                     totalAdded += newEntries.length;
-                    console.log(`[WI] Added ${newEntries.length} new entries to world "${world}" (collection: ${collectionId})`);
+                    console.log(`[WI] Successfully added ${newEntries.length} new entries to world "${world}" (collection: ${collectionId})`);
                 } catch (error) {
-                    console.error(`[WI] Failed to insert entries for world "${world}":`, error);
-                    // Continue with other worlds even if one fails
+                    const errorMsg = getErrorMessage(error);
+                    console.error(`[WI] Failed to insert ${newEntries.length} entries for world "${world}": ${errorMsg}`, error);
+                    console.error(`[WI] Error details:`, {
+                        world,
+                        collectionId,
+                        entryCount: newEntries.length,
+                        errorMessage: error.message,
+                        errorStack: error.stack,
+                        errorCause: error.cause
+                    });
+                    errors.push({ world, operation: 'insert', entryCount: newEntries.length, error: errorMsg, details: error });
+                    // Continue with deletion even if insertion failed
                 }
             }
 
@@ -739,26 +806,60 @@ export async function syncWorldInfoVectors(entries, vectorSettings, directories,
                 try {
                     await deleteVectorItems(directories, collectionId, vectorSource, sourceSettings, deletedHashes);
                     totalDeleted += deletedHashes.length;
-                    console.log(`[WI] Deleted ${deletedHashes.length} old entries from world "${world}" (collection: ${collectionId})`);
+                    console.log(`[WI] Successfully deleted ${deletedHashes.length} old entries from world "${world}" (collection: ${collectionId})`);
                 } catch (error) {
-                    console.error(`[WI] Failed to delete entries for world "${world}":`, error);
-                    // Continue with other worlds even if one fails
+                    const errorMsg = getErrorMessage(error);
+                    console.error(`[WI] Failed to delete ${deletedHashes.length} entries for world "${world}": ${errorMsg}`, error);
+                    console.error(`[WI] Error details:`, {
+                        world,
+                        collectionId,
+                        hashCount: deletedHashes.length,
+                        errorMessage: error.message,
+                        errorStack: error.stack,
+                        errorCause: error.cause
+                    });
+                    errors.push({ world, operation: 'delete', hashCount: deletedHashes.length, error: errorMsg, details: error });
+                    // Continue even if deletion failed
                 }
             }
 
             syncedWorlds.push(world);
         } catch (error) {
-            console.error(`[WI] Failed to synchronize world "${world}":`, error);
+            const errorMsg = getErrorMessage(error);
+            console.error(`[WI] Failed to synchronize world "${world}": ${errorMsg}`, error);
+            console.error(`[WI] Error details:`, {
+                world,
+                errorMessage: error.message,
+                errorStack: error.stack,
+                errorCause: error.cause
+            });
+            errors.push({ world, operation: 'synchronize', error: errorMsg, details: error });
+            failedWorlds.push(world);
             // Continue with other worlds even if one fails
         }
     }
 
-    console.log(`[WI] Vector synchronization completed: ${syncedWorlds.length} world(s) synced, ${totalAdded} added, ${totalDeleted} deleted`);
+    // Log summary
+    const totalWorlds = Object.keys(groupedEntries).length;
+    const successCount = syncedWorlds.length;
+    const failureCount = failedWorlds.length;
+
+    if (failureCount === 0) {
+        console.log(`[WI] Vector synchronization completed successfully: ${successCount}/${totalWorlds} world(s) synced, ${totalAdded} added, ${totalDeleted} deleted`);
+    } else {
+        console.warn(`[WI] Vector synchronization completed with errors: ${successCount}/${totalWorlds} world(s) synced successfully, ${failureCount} failed`);
+        console.warn(`[WI] Failed worlds: ${failedWorlds.join(', ')}`);
+        if (errors.length > 0) {
+            console.warn(`[WI] Error summary:`, errors.map(e => `[${e.world}] ${e.operation}: ${e.error}`).join('; '));
+        }
+    }
 
     return {
         synced: syncedWorlds.length,
         added: totalAdded,
-        deleted: totalDeleted
+        deleted: totalDeleted,
+        failed: failureCount,
+        errors: errors.length > 0 ? errors : undefined
     };
 }
 
