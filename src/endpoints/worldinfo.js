@@ -293,6 +293,89 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
     return activatedEntries;
 }
 
+/**
+ * World Info position enum (basic version for Phase 1.4)
+ */
+export const world_info_position = {
+    before: 0,
+    after: 1,
+    // Other positions will be added in later phases
+    // ANTop: 2,
+    // ANBottom: 3,
+    // atDepth: 4,
+    // EMTop: 5,
+    // EMBottom: 6,
+    // outlet: 7,
+};
+
+/**
+ * Formats a World Info entry for prompt inclusion
+ * @param {object} entry World Info entry
+ * @returns {string} Formatted entry text
+ */
+function formatWorldInfoEntry(entry) {
+    if (!entry || !entry.content) {
+        return '';
+    }
+
+    const keys = entry.key && Array.isArray(entry.key) && entry.key.length > 0
+        ? entry.key.join(', ')
+        : '';
+
+    // Format: "keys: content" or just "content" if no keys
+    return keys ? `${keys}: ${entry.content}` : entry.content;
+}
+
+/**
+ * Formats activated World Info entries into prompt strings
+ * Separates entries by position (Before/After) and formats them
+ * @param {Array<object>} activatedEntries Array of activated World Info entries
+ * @returns {object} Object with worldInfoBefore and worldInfoAfter strings
+ */
+export function formatWorldInfo(activatedEntries) {
+    if (!activatedEntries || activatedEntries.length === 0) {
+        return {
+            worldInfoBefore: '',
+            worldInfoAfter: '',
+        };
+    }
+
+    const beforeEntries = [];
+    const afterEntries = [];
+
+    // Sort entries by order (higher order first, then reverse for insertion order)
+    const sortedEntries = [...activatedEntries].sort((a, b) => {
+        const orderA = a.order || 100;
+        const orderB = b.order || 100;
+        return orderB - orderA; // Higher order comes first
+    });
+
+    // Separate entries by position
+    for (const entry of sortedEntries) {
+        const formatted = formatWorldInfoEntry(entry);
+        if (!formatted) {
+            continue;
+        }
+
+        const position = entry.position ?? world_info_position.before;
+
+        switch (position) {
+            case world_info_position.after:
+                afterEntries.push(formatted);
+                break;
+            case world_info_position.before:
+            default:
+                beforeEntries.push(formatted);
+                break;
+        }
+    }
+
+    return {
+        worldInfoBefore: beforeEntries.join('\n\n'),
+        worldInfoAfter: afterEntries.join('\n\n'),
+    };
+}
+
 export const router = express.Router();
 
 router.post('/list', async (request, response) => {

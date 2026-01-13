@@ -20,6 +20,7 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] **Phase 1.1**: 캐릭터 월드인포 로드 함수 구현 (`getCharacterWorldInfo`) ✅
 - [x] **Phase 1.2**: 엔트리 수집 로직 구현 (`getSortedEntries`, `getGlobalLore`) ✅
 - [x] **Phase 1.3**: 기본 키워드 매칭 구현 (`checkWorldInfo`) ✅
+- [x] **Phase 1.4**: 월드인포 프롬프트 생성 (`formatWorldInfo`) ✅
 
 ### 미구현
 - [ ] 키워드 기반 필터링 (스캔 로직 미구현)
@@ -168,7 +169,7 @@ export function checkWorldInfo(entries, chatHistory, scanDepth) {
 
 **예상 작업 시간**: 4-5시간
 
-#### 1.4 월드인포 프롬프트 생성
+#### 1.4 월드인포 프롬프트 생성 ✅
 **목표**: 활성화된 엔트리를 프롬프트 형식으로 변환
 
 **구현 내용**:
@@ -178,12 +179,24 @@ export function checkWorldInfo(entries, chatHistory, scanDepth) {
 
 **주요 함수**:
 ```javascript
-function formatWorldInfo(activatedEntries) {
+function formatWorldInfoEntry(entry) {
+    // 엔트리를 "keys: content" 형식으로 포맷팅
+}
+
+export function formatWorldInfo(activatedEntries) {
     // 1. 엔트리 포맷팅
-    // 2. Before/After 분리
-    // 3. 프롬프트 문자열 생성
+    // 2. Before/After 분리 (position 기준)
+    // 3. order 기준 정렬
+    // 4. 프롬프트 문자열 생성
 }
 ```
+
+**구현 완료**:
+- ✅ `src/endpoints/worldinfo.js`에 `world_info_position` enum 추가
+- ✅ `src/endpoints/worldinfo.js`에 `formatWorldInfoEntry` 함수 추가
+- ✅ `src/endpoints/worldinfo.js`에 `formatWorldInfo` 함수 추가
+- ✅ `src/endpoints/chats.js`에서 `formatWorldInfo` 사용하여 Before/After 분리
+- ✅ 위치별 엔트리 분리 및 프롬프트에 포함
 
 **예상 작업 시간**: 2-3시간
 

@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1205,18 +1205,10 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 const activatedEntries = checkWorldInfo(sortedEntries, chatHistory, 100);
 
                 if (activatedEntries && activatedEntries.length > 0) {
-                    // Format activated entries
-                    const worldInfoText = activatedEntries
-                        .filter(entry => entry && entry.content)
-                        .map(entry => {
-                            const keys = entry.key ? entry.key.join(', ') : '';
-                            return keys ? `${keys}: ${entry.content}` : entry.content;
-                        })
-                        .join('\n\n');
-                    
-                    // For now, put all world info in worldInfoBefore
-                    // TODO: Implement proper before/after positioning based on entry position
-                    worldInfoBefore = worldInfoText;
+                    // Format activated entries by position (Before/After)
+                    const formattedWorldInfo = formatWorldInfo(activatedEntries);
+                    worldInfoBefore = formattedWorldInfo.worldInfoBefore;
+                    worldInfoAfter = formattedWorldInfo.worldInfoAfter;
                 }
             }
         } catch (error) {
