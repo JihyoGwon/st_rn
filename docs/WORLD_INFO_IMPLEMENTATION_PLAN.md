@@ -21,6 +21,8 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] **Phase 1.2**: 엔트리 수집 로직 구현 (`getSortedEntries`, `getGlobalLore`) ✅
 - [x] **Phase 1.3**: 기본 키워드 매칭 구현 (`checkWorldInfo`) ✅
 - [x] **Phase 1.4**: 월드인포 프롬프트 생성 (`formatWorldInfo`) ✅
+- [x] **Phase 2.1**: 보조 키워드 (Secondary Keywords) 구현 ✅
+- [x] **Phase 2.2**: 키워드 로직 구현 (AND ANY, AND ALL, NOT ANY, NOT ALL) ✅
 
 ### 미구현
 - [ ] 키워드 기반 필터링 (스캔 로직 미구현)
@@ -204,21 +206,35 @@ export function formatWorldInfo(activatedEntries) {
 
 ### Phase 2: 기본 필터링 및 정렬
 
-#### 2.1 보조 키워드 (Secondary Keywords) 구현
+#### 2.1 보조 키워드 (Secondary Keywords) 구현 ✅
 **목표**: Secondary Keywords 매칭 로직 추가
 
 **구현 내용**:
 - Primary Keywords 매칭 후 Secondary Keywords 체크
 - Selective 로직 적용 (AND ANY, AND ALL 등)
 
+**구현 완료**:
+- ✅ `src/endpoints/worldinfo.js`에 `world_info_logic` enum 추가
+- ✅ `src/endpoints/worldinfo.js`에 `checkSecondaryKeywords` 함수 추가
+- ✅ `checkWorldInfo` 함수에서 Secondary Keywords 체크 로직 추가
+- ✅ Primary Keywords 매칭 후 Secondary Keywords 체크
+
 **예상 작업 시간**: 2-3시간
 
-#### 2.2 키워드 로직 구현
+#### 2.2 키워드 로직 구현 ✅
 **목표**: AND ANY, AND ALL, NOT ANY, NOT ALL 로직 구현
 
 **구현 내용**:
 - `selectiveLogic` 필드에 따른 키워드 매칭 로직
 - Primary와 Secondary 키워드 조합 처리
+
+**구현 완료**:
+- ✅ `AND_ANY` (0): Primary AND (any Secondary) - 하나라도 매칭되면 활성화
+- ✅ `NOT_ALL` (1): Primary AND NOT (all Secondary) - 하나라도 매칭되지 않으면 활성화
+- ✅ `NOT_ANY` (2): Primary AND NOT (any Secondary) - 모두 매칭되지 않으면 활성화
+- ✅ `AND_ALL` (3): Primary AND (all Secondary) - 모두 매칭되면 활성화
+- ✅ `checkSecondaryKeywords` 함수에서 모든 로직 구현
+- ✅ Early exit 최적화 (AND_ANY, NOT_ALL)
 
 **예상 작업 시간**: 3-4시간
 

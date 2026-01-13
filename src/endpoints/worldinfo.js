@@ -231,8 +231,71 @@ function matchKeyword(text, keyword, caseSensitive = false) {
 }
 
 /**
+ * World Info selective logic enum
+ */
+export const world_info_logic = {
+    AND_ANY: 0,   // Primary AND (any Secondary) - 하나라도 매칭되면 활성화
+    NOT_ALL: 1,   // Primary AND NOT (all Secondary) - 하나라도 매칭되지 않으면 활성화
+    NOT_ANY: 2,   // Primary AND NOT (any Secondary) - 모두 매칭되지 않으면 활성화
+    AND_ALL: 3,   // Primary AND (all Secondary) - 모두 매칭되면 활성화
+};
+
+/**
+ * Checks Secondary Keywords against chat text based on selective logic
+ * @param {string} chatText Chat text to search in
+ * @param {Array<string>} secondaryKeywords Array of secondary keywords
+ * @param {number} selectiveLogic Selective logic to use
+ * @returns {boolean} True if secondary keywords match according to logic
+ */
+function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic) {
+    if (!secondaryKeywords || secondaryKeywords.length === 0) {
+        return true; // No secondary keywords means always pass
+    }
+
+    let hasAnyMatch = false;
+    let hasAllMatch = true;
+
+    // Check each secondary keyword
+    for (const keyword of secondaryKeywords) {
+        if (!keyword || typeof keyword !== 'string') {
+            continue;
+        }
+
+        const hasMatch = matchKeyword(chatText, keyword.trim(), false);
+
+        if (hasMatch) {
+            hasAnyMatch = true;
+        } else {
+            hasAllMatch = false;
+        }
+
+        // Early exit for AND_ANY: 하나라도 매칭되면 바로 활성화
+        if (selectiveLogic === world_info_logic.AND_ANY && hasMatch) {
+            return true;
+        }
+
+        // Early exit for NOT_ALL: 하나라도 매칭되지 않으면 바로 활성화
+        if (selectiveLogic === world_info_logic.NOT_ALL && !hasMatch) {
+            return true;
+        }
+    }
+
+    // Handle NOT_ANY: 모두 매칭되지 않으면 활성화
+    if (selectiveLogic === world_info_logic.NOT_ANY && !hasAnyMatch) {
+        return true;
+    }
+
+    // Handle AND_ALL: 모두 매칭되면 활성화
+    if (selectiveLogic === world_info_logic.AND_ALL && hasAllMatch) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Checks World Info entries against chat history and returns activated entries
- * Basic version: Only checks Primary Keywords
+ * Checks Primary Keywords and Secondary Keywords based on selective logic
  * @param {Array<object>} entries Array of World Info entries
  * @param {Array<object>} chatHistory Array of chat messages
  * @param {number} scanDepth Maximum depth to scan (default: 100)
@@ -271,7 +334,7 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
         }
 
         // Check Primary Keywords
-        let hasMatch = false;
+        let primaryMatch = false;
         for (const keyword of entry.key) {
             if (!keyword || typeof keyword !== 'string') {
                 continue;
@@ -280,12 +343,36 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
             // Basic keyword matching (case-insensitive by default)
             // TODO: Add case sensitivity and whole word matching in Phase 3
             if (matchKeyword(chatText, keyword.trim(), false)) {
-                hasMatch = true;
+                primaryMatch = true;
                 break;
             }
         }
 
-        if (hasMatch) {
+        // Primary keyword must match first
+        if (!primaryMatch) {
+            continue;
+        }
+
+        // Check if entry has Secondary Keywords
+        const hasSecondaryKeywords = entry.keysecondary && 
+            Array.isArray(entry.keysecondary) && 
+            entry.keysecondary.length > 0;
+
+        // If no secondary keywords, activate immediately
+        if (!hasSecondaryKeywords) {
+            activatedEntries.push(entry);
+            continue;
+        }
+
+        // Check Secondary Keywords based on selective logic
+        const selectiveLogic = entry.selectiveLogic ?? world_info_logic.AND_ANY;
+        const secondaryMatch = checkSecondaryKeywords(
+            chatText,
+            entry.keysecondary,
+            selectiveLogic
+        );
+
+        if (secondaryMatch) {
             activatedEntries.push(entry);
         }
     }
