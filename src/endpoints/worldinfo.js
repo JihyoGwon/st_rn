@@ -34,6 +34,52 @@ export function readWorldInfoFile(directories, worldInfoName, allowDummy) {
     return worldInfo;
 }
 
+/**
+ * Gets World Info entries for a character
+ * Loads the World Info file specified in character.data.extensions.world
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {object} characterData Character data object (must have data.extensions.world)
+ * @returns {Array<object>} Array of World Info entries with 'world' field added
+ */
+export function getCharacterWorldInfo(directories, characterData) {
+    // Get World Info name from character data
+    const worldInfoName = characterData?.data?.extensions?.world || characterData?.data?.world || '';
+    
+    if (!worldInfoName) {
+        return [];
+    }
+
+    // Load World Info file
+    const worldInfo = readWorldInfoFile(directories, worldInfoName, true);
+    
+    if (!worldInfo || !worldInfo.entries) {
+        return [];
+    }
+
+    // Convert entries object to array and add 'world' field
+    const entries = Object.keys(worldInfo.entries).map((uid) => {
+        const entry = worldInfo.entries[uid];
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            return null;
+        }
+        // Ensure key and keysecondary are arrays
+        if (!Array.isArray(entry.key)) {
+            entry.key = [];
+        }
+        if (!Array.isArray(entry.keysecondary)) {
+            entry.keysecondary = [];
+        }
+        // Add world field to identify which World Info book this entry belongs to
+        return {
+            ...entry,
+            uid: Number(uid) || entry.uid || 0,
+            world: worldInfoName,
+        };
+    }).filter(entry => entry !== null);
+
+    return entries;
+}
+
 export const router = express.Router();
 
 router.post('/list', async (request, response) => {

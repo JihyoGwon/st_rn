@@ -17,6 +17,7 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] 월드인포 파일 로드 (`/api/chats/prepare-messages`에서 처리) ✅
 - [x] 모든 엔트리 포함 (현재는 모든 엔트리 포함) ✅
 - [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함) ✅
+- [x] **Phase 1.1**: 캐릭터 월드인포 로드 함수 구현 (`getCharacterWorldInfo`) ✅
 
 ### 미구현
 - [ ] 키워드 기반 필터링 (스캔 로직 미구현)
@@ -67,7 +68,7 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 
 ### Phase 1: 핵심 기능 (기본 동작)
 
-#### 1.1 캐릭터 월드인포 로드
+#### 1.1 캐릭터 월드인포 로드 ✅
 **목표**: 캐릭터에 지정된 월드인포 파일 로드
 
 **구현 내용**:
@@ -79,13 +80,19 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 
 **주요 함수**:
 ```javascript
-async function getCharacterWorldInfo(characterId) {
-    // 1. 캐릭터 데이터 로드
-    // 2. extensions.world 확인
-    // 3. 월드인포 파일 로드
+export function getCharacterWorldInfo(directories, characterData) {
+    // 1. 캐릭터 데이터에서 월드인포 이름 가져오기
+    // 2. 월드인포 파일 로드
+    // 3. 엔트리를 배열로 변환하고 'world' 필드 추가
     // 4. 엔트리 반환
 }
 ```
+
+**구현 완료**:
+- ✅ `src/endpoints/worldinfo.js`에 `getCharacterWorldInfo` 함수 추가
+- ✅ `src/endpoints/chats.js`의 `prepare-messages`에서 사용하도록 통합
+- ✅ 엔트리를 객체에서 배열로 변환
+- ✅ 각 엔트리에 `world` 필드 추가
 
 **예상 작업 시간**: 2-3시간
 

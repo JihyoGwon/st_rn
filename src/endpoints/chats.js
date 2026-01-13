@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1151,33 +1151,28 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         const name2 = characterData.data.name || '';
         const charFirstMes = characterData.data.first_mes || '';
         const alternateGreetings = characterData.data.alternate_greetings || [];
-        const worldInfoName = characterData.data.extensions?.world || characterData.data.world || '';
-
-        // Load world info if character has one
+        // Load world info if character has one (using new getCharacterWorldInfo function)
         let worldInfoBefore = '';
         let worldInfoAfter = '';
-        if (worldInfoName) {
-            try {
-                const worldInfo = readWorldInfoFile(request.user.directories, worldInfoName, true);
-                if (worldInfo && worldInfo.entries) {
-                    // Simple formatting: combine all entries
-                    // TODO: Implement proper world info scanning based on chat history
-                    const entries = Object.values(worldInfo.entries || {});
-                    const worldInfoText = entries
-                        .filter(entry => entry && entry.content)
-                        .map(entry => {
-                            const keys = entry.keys ? entry.keys.join(', ') : '';
-                            return keys ? `${keys}: ${entry.content}` : entry.content;
-                        })
-                        .join('\n\n');
-                    
-                    // For now, put all world info in worldInfoBefore
-                    // TODO: Implement proper before/after positioning based on entry position
-                    worldInfoBefore = worldInfoText;
-                }
-            } catch (error) {
-                console.warn('[prepare-messages] Failed to load world info:', error);
+        try {
+            const characterWorldInfoEntries = getCharacterWorldInfo(request.user.directories, characterData);
+            if (characterWorldInfoEntries && characterWorldInfoEntries.length > 0) {
+                // Simple formatting: combine all entries
+                // TODO: Implement proper world info scanning based on chat history
+                const worldInfoText = characterWorldInfoEntries
+                    .filter(entry => entry && entry.content)
+                    .map(entry => {
+                        const keys = entry.key ? entry.key.join(', ') : '';
+                        return keys ? `${keys}: ${entry.content}` : entry.content;
+                    })
+                    .join('\n\n');
+                
+                // For now, put all world info in worldInfoBefore
+                // TODO: Implement proper before/after positioning based on entry position
+                worldInfoBefore = worldInfoText;
             }
+        } catch (error) {
+            console.warn('[prepare-messages] Failed to load world info:', error);
         }
 
         // Load chat history if chat_id is provided
