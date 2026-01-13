@@ -300,6 +300,14 @@ export function formatWorldInfo(activatedEntries) {
 
 **예상 작업 시간**: 2-3시간
 
+**구현 완료**:
+- ✅ `matchKeyword` 함수에 `matchWholeWords` 파라미터 추가 및 전체 단어 매칭 로직 구현 (정규식 word boundary 사용)
+- ✅ `checkWorldInfo` 함수에 전역 설정 파라미터 추가 (`globalCaseSensitive`, `globalMatchWholeWords`)
+- ✅ 엔트리별 설정 우선순위 로직 구현 (`entry.caseSensitive ?? globalCaseSensitive`)
+- ✅ `checkSecondaryKeywords` 함수에 `caseSensitive`, `matchWholeWords` 파라미터 추가
+- ✅ `getCharacterWorldInfo`와 `getGlobalLore`에서 `extensions.case_sensitive`, `extensions.match_whole_words` 필드 정규화
+- ✅ `settings.json`에서 `world_info_settings.world_info_case_sensitive`, `world_info_settings.world_info_match_whole_words` 로드
+
 #### 3.2 스캔 깊이 구현
 **목표**: 전역 및 엔트리별 스캔 깊이 지원
 

@@ -69,12 +69,24 @@ export function getCharacterWorldInfo(directories, characterData) {
         if (!Array.isArray(entry.keysecondary)) {
             entry.keysecondary = [];
         }
-        // Add world field to identify which World Info book this entry belongs to
-        return {
+        // Normalize extensions fields (caseSensitive, matchWholeWords can be in extensions or directly on entry)
+        const normalizedEntry = {
             ...entry,
             uid: Number(uid) || entry.uid || 0,
             world: worldInfoName,
         };
+        
+        // Extract caseSensitive and matchWholeWords from extensions if they exist
+        if (entry.extensions) {
+            if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
+                normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
+            }
+            if (entry.extensions.match_whole_words !== undefined && normalizedEntry.matchWholeWords === undefined) {
+                normalizedEntry.matchWholeWords = entry.extensions.match_whole_words;
+            }
+        }
+        
+        return normalizedEntry;
     }).filter(entry => entry !== null);
 
     return entries;
@@ -108,11 +120,25 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                 if (!Array.isArray(entry.keysecondary)) {
                     entry.keysecondary = [];
                 }
-                return {
+                
+                // Normalize extensions fields (caseSensitive, matchWholeWords can be in extensions or directly on entry)
+                const normalizedEntry = {
                     ...entry,
                     uid: Number(uid) || entry.uid || 0,
                     world: worldName,
                 };
+                
+                // Extract caseSensitive and matchWholeWords from extensions if they exist
+                if (entry.extensions) {
+                    if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
+                        normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
+                    }
+                    if (entry.extensions.match_whole_words !== undefined && normalizedEntry.matchWholeWords === undefined) {
+                        normalizedEntry.matchWholeWords = entry.extensions.match_whole_words;
+                    }
+                }
+                
+                return normalizedEntry;
             }).filter(entry => entry !== null);
             entries = entries.concat(newEntries);
         }
@@ -213,20 +239,35 @@ function convertChatToText(chatHistory, scanDepth = 100) {
 }
 
 /**
- * Simple keyword matching (basic version for Phase 1.3)
+ * Simple keyword matching with case sensitivity and whole word matching support
  * @param {string} text Text to search in
  * @param {string} keyword Keyword to search for
  * @param {boolean} caseSensitive Whether to match case (default: false)
+ * @param {boolean} matchWholeWords Whether to match whole words only (default: false)
  * @returns {boolean} True if keyword is found
  */
-function matchKeyword(text, keyword, caseSensitive = false) {
+function matchKeyword(text, keyword, caseSensitive = false, matchWholeWords = false) {
     if (!text || !keyword) {
         return false;
     }
 
     const searchText = caseSensitive ? text : text.toLowerCase();
-    const searchKeyword = caseSensitive ? keyword : keyword.toLowerCase();
+    const searchKeyword = caseSensitive ? keyword.trim() : keyword.trim().toLowerCase();
 
+    if (!searchKeyword) {
+        return false;
+    }
+
+    // Whole word matching: use word boundary regex
+    if (matchWholeWords) {
+        // Escape special regex characters in keyword
+        const escapedKeyword = searchKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Use word boundary (\b) to match whole words only
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, caseSensitive ? 'g' : 'gi');
+        return regex.test(searchText);
+    }
+
+    // Simple substring matching
     return searchText.includes(searchKeyword);
 }
 
@@ -245,9 +286,11 @@ export const world_info_logic = {
  * @param {string} chatText Chat text to search in
  * @param {Array<string>} secondaryKeywords Array of secondary keywords
  * @param {number} selectiveLogic Selective logic to use
+ * @param {boolean} caseSensitive Whether to match case
+ * @param {boolean} matchWholeWords Whether to match whole words only
  * @returns {boolean} True if secondary keywords match according to logic
  */
-function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic) {
+function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic, caseSensitive = false, matchWholeWords = false) {
     if (!secondaryKeywords || secondaryKeywords.length === 0) {
         return true; // No secondary keywords means always pass
     }
@@ -261,7 +304,7 @@ function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic) {
             continue;
         }
 
-        const hasMatch = matchKeyword(chatText, keyword.trim(), false);
+        const hasMatch = matchKeyword(chatText, keyword.trim(), caseSensitive, matchWholeWords);
 
         if (hasMatch) {
             hasAnyMatch = true;
@@ -296,12 +339,15 @@ function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic) {
 /**
  * Checks World Info entries against chat history and returns activated entries
  * Checks Primary Keywords and Secondary Keywords based on selective logic
+ * Supports case sensitivity and whole word matching (global and entry-specific)
  * @param {Array<object>} entries Array of World Info entries
  * @param {Array<object>} chatHistory Array of chat messages
  * @param {number} scanDepth Maximum depth to scan (default: 100)
+ * @param {boolean} globalCaseSensitive Global case sensitivity setting (default: false)
+ * @param {boolean} globalMatchWholeWords Global whole word matching setting (default: false)
  * @returns {Array<object>} Array of activated entries
  */
-export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
+export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false) {
     if (!entries || entries.length === 0) {
         return [];
     }
@@ -335,6 +381,16 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
             continue;
         }
 
+        // Get entry-specific settings (override global if specified)
+        // entry.caseSensitive can be null (use global), true, or false
+        // entry.matchWholeWords can be null (use global), true, or false
+        const caseSensitive = entry.caseSensitive !== null && entry.caseSensitive !== undefined
+            ? entry.caseSensitive
+            : globalCaseSensitive;
+        const matchWholeWords = entry.matchWholeWords !== null && entry.matchWholeWords !== undefined
+            ? entry.matchWholeWords
+            : globalMatchWholeWords;
+
         // Check Primary Keywords
         let primaryMatch = false;
         for (const keyword of entry.key) {
@@ -342,9 +398,8 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
                 continue;
             }
 
-            // Basic keyword matching (case-insensitive by default)
-            // TODO: Add case sensitivity and whole word matching in Phase 3
-            if (matchKeyword(chatText, keyword.trim(), false)) {
+            // Keyword matching with case sensitivity and whole word matching
+            if (matchKeyword(chatText, keyword.trim(), caseSensitive, matchWholeWords)) {
                 primaryMatch = true;
                 break;
             }
@@ -371,7 +426,9 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
         const secondaryMatch = checkSecondaryKeywords(
             chatText,
             entry.keysecondary,
-            selectiveLogic
+            selectiveLogic,
+            caseSensitive,
+            matchWholeWords
         );
 
         if (secondaryMatch) {

@@ -1174,6 +1174,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             // Get World Info settings from user settings
             let selectedWorldInfo = [];
             let characterStrategy = world_info_insertion_strategy.evenly;
+            let globalCaseSensitive = false;
+            let globalMatchWholeWords = false;
             
             const pathToSettings = path.join(request.user.directories.root, 'settings.json');
             if (fs.existsSync(pathToSettings)) {
@@ -1191,6 +1193,16 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     // Get world_info_character_strategy (default: evenly = 0)
                     if (typeof settings.world_info_character_strategy === 'number') {
                         characterStrategy = settings.world_info_character_strategy;
+                    }
+                    
+                    // Get global World Info settings for case sensitivity and whole word matching
+                    if (settings.world_info_settings) {
+                        if (typeof settings.world_info_settings.world_info_case_sensitive === 'boolean') {
+                            globalCaseSensitive = settings.world_info_settings.world_info_case_sensitive;
+                        }
+                        if (typeof settings.world_info_settings.world_info_match_whole_words === 'boolean') {
+                            globalMatchWholeWords = settings.world_info_settings.world_info_match_whole_words;
+                        }
                     }
                 }
             }
@@ -1231,8 +1243,14 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 }
                 console.log(`[WI] Scanning ${chatHistoryForWI.length} messages (${chatHistory.length} from history + ${user_message && user_message.trim() ? 1 : 0} current)`);
 
-                // Check World Info entries against chat history (basic keyword matching)
-                const activatedEntries = checkWorldInfo(sortedEntries, chatHistoryForWI, 100);
+                // Check World Info entries against chat history (with case sensitivity and whole word matching)
+                const activatedEntries = checkWorldInfo(
+                    sortedEntries, 
+                    chatHistoryForWI, 
+                    100,
+                    globalCaseSensitive,
+                    globalMatchWholeWords
+                );
                 console.log(`[WI] Activated ${activatedEntries ? activatedEntries.length : 0} entries`);
 
                 if (activatedEntries && activatedEntries.length > 0) {
