@@ -308,9 +308,11 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
 
     // Convert chat history to searchable text
     const chatText = convertChatToText(chatHistory, scanDepth);
+    console.log(`[WI] Converted chat text (length: ${chatText.length}): "${chatText.substring(0, 200)}${chatText.length > 200 ? '...' : ''}"`);
 
     if (!chatText) {
         // No chat text to search, return empty array
+        console.log(`[WI] No chat text to search`);
         return [];
     }
 
@@ -381,18 +383,17 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100) {
 }
 
 /**
- * World Info position enum (basic version for Phase 1.4)
+ * World Info position enum
  */
 export const world_info_position = {
     before: 0,
     after: 1,
-    // Other positions will be added in later phases
-    // ANTop: 2,
-    // ANBottom: 3,
-    // atDepth: 4,
-    // EMTop: 5,
-    // EMBottom: 6,
-    // outlet: 7,
+    ANTop: 2,
+    ANBottom: 3,
+    atDepth: 4,
+    EMTop: 5,
+    EMBottom: 6,
+    outlet: 7,
 };
 
 /**
@@ -415,20 +416,30 @@ function formatWorldInfoEntry(entry) {
 
 /**
  * Formats activated World Info entries into prompt strings
- * Separates entries by position (Before/After) and formats them
+ * Separates entries by position (Before/After/ANTop/ANBottom/atDepth/Outlet) and formats them
  * @param {Array<object>} activatedEntries Array of activated World Info entries
- * @returns {object} Object with worldInfoBefore and worldInfoAfter strings
+ * @returns {object} Object with worldInfoBefore, worldInfoAfter, and other position-specific entries
  */
 export function formatWorldInfo(activatedEntries) {
     if (!activatedEntries || activatedEntries.length === 0) {
         return {
             worldInfoBefore: '',
             worldInfoAfter: '',
+            anTopEntries: [],
+            anBottomEntries: [],
+            depthEntries: [],
+            outletEntries: {},
         };
     }
 
     const beforeEntries = [];
     const afterEntries = [];
+    const anTopEntries = [];
+    const anBottomEntries = [];
+    /** @type {Array<{depth: number, entries: string[], role: number}>} */
+    const depthEntries = [];
+    /** @type {{[key: string]: string[]}} */
+    const outletEntries = {};
 
     // Sort entries by order (higher order first, then reverse for insertion order)
     const sortedEntries = [...activatedEntries].sort((a, b) => {
@@ -447,11 +458,57 @@ export function formatWorldInfo(activatedEntries) {
         const position = entry.position ?? world_info_position.before;
 
         switch (position) {
+            case world_info_position.before:
+                beforeEntries.push(formatted);
+                break;
             case world_info_position.after:
                 afterEntries.push(formatted);
                 break;
-            case world_info_position.before:
+            case world_info_position.ANTop:
+                anTopEntries.push(formatted);
+                break;
+            case world_info_position.ANBottom:
+                anBottomEntries.push(formatted);
+                break;
+            case world_info_position.atDepth: {
+                // Group by depth and role
+                const depth = entry.depth ?? 0;
+                const role = entry.role ?? 0; // 0 = system
+                const existingDepthIndex = depthEntries.findIndex(
+                    (e) => e.depth === depth && e.role === role
+                );
+                if (existingDepthIndex !== -1) {
+                    depthEntries[existingDepthIndex].entries.push(formatted);
+                } else {
+                    depthEntries.push({
+                        depth: depth,
+                        entries: [formatted],
+                        role: role,
+                    });
+                }
+                break;
+            }
+            case world_info_position.outlet: {
+                // Group by outlet name
+                const outletName = entry.outletName || '';
+                if (!outletName) {
+                    console.warn(`[WI] Entry has position 'outlet' but no outletName. Skipping.`);
+                    break;
+                }
+                if (Array.isArray(outletEntries[outletName])) {
+                    outletEntries[outletName].push(formatted);
+                } else {
+                    outletEntries[outletName] = [formatted];
+                }
+                break;
+            }
+            case world_info_position.EMTop:
+            case world_info_position.EMBottom:
+                // Example Messages - not implemented yet, treat as before for now
+                beforeEntries.push(formatted);
+                break;
             default:
+                // Unknown position, treat as before
                 beforeEntries.push(formatted);
                 break;
         }
@@ -460,6 +517,10 @@ export function formatWorldInfo(activatedEntries) {
     return {
         worldInfoBefore: beforeEntries.join('\n\n'),
         worldInfoAfter: afterEntries.join('\n\n'),
+        anTopEntries: anTopEntries,
+        anBottomEntries: anBottomEntries,
+        depthEntries: depthEntries,
+        outletEntries: outletEntries,
     };
 }
 

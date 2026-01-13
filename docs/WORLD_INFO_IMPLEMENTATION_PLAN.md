@@ -23,6 +23,12 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] **Phase 1.4**: 월드인포 프롬프트 생성 (`formatWorldInfo`) ✅
 - [x] **Phase 2.1**: 보조 키워드 (Secondary Keywords) 구현 ✅
 - [x] **Phase 2.2**: 키워드 로직 구현 (AND ANY, AND ALL, NOT ANY, NOT ALL) ✅
+- [x] **Phase 2.3**: 위치 분리 개선 (10개 옵션 중 2개 완전 구현, 5개 수집 완료, 2개 미구현) ✅
+
+### 위치별 구현 상태 요약
+- **완전 구현** (수집 + 삽입): Before, After, atDepth (3종) (5개)
+- **수집만 완료** (삽입 미구현): ANTop, ANBottom, Outlet (3개)
+- **미구현**: EMTop, EMBottom (2개)
 
 ### 미구현
 - [ ] 키워드 기반 필터링 (스캔 로직 미구현)
@@ -246,6 +252,30 @@ export function formatWorldInfo(activatedEntries) {
 - 위치별 엔트리 분리 및 적용
 
 **예상 작업 시간**: 2-3시간
+
+**구현 완료**:
+- ✅ `world_info_position` enum에 ANTop, ANBottom, atDepth, outlet 추가
+- ✅ `formatWorldInfo` 함수에서 위치별 엔트리 분리 로직 구현
+- ✅ At Depth 엔트리는 depth와 role로 그룹화
+- ✅ Outlet 엔트리는 outletName으로 그룹화
+- ✅ ANTop, ANBottom 엔트리 수집 (실제 프롬프트 삽입은 향후 구현 예정)
+- ✅ At Depth 엔트리 프롬프트 삽입 구현 완료 (depth와 role 기반으로 채팅 히스토리 내 특정 위치에 삽입)
+- ⚠️ ANTop, ANBottom, Outlet 프롬프트 삽입 로직은 향후 Phase에서 구현 예정
+
+**위치별 구현 상태** (총 10개 옵션):
+
+| 옵션 | 위치 코드 | 수집 여부 | 삽입 여부 | 비고 |
+|------|----------|----------|----------|------|
+| 캐릭터 정의 전 | `before` | ✅ | ✅ | 프롬프트에 삽입됨 |
+| 캐릭터 정의 후 | `after` | ✅ | ✅ | 프롬프트에 삽입됨 |
+| ↑ EM | `EMTop` | ❌ | ❌ | 현재 Before로 처리됨 |
+| ↓ EM | `EMBottom` | ❌ | ❌ | 현재 Before로 처리됨 |
+| 작가 노트 전 | `ANTop` | ✅ | ❌ | 수집만 완료, 삽입 미구현 |
+| 작가 노트 후 | `ANBottom` | ✅ | ❌ | 수집만 완료, 삽입 미구현 |
+| @D (system) | `atDepth` (role=0) | ✅ | ✅ | 프롬프트에 삽입됨 |
+| @D (user) | `atDepth` (role=1) | ✅ | ✅ | 프롬프트에 삽입됨 |
+| @D (assistant) | `atDepth` (role=2) | ✅ | ✅ | 프롬프트에 삽입됨 |
+| Outlet | `outlet` | ✅ | ❌ | 수집만 완료, 삽입 미구현 |
 
 #### 2.4 우선순위 정렬
 **목표**: Order 필드 기반 정렬

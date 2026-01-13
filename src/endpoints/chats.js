@@ -1151,9 +1151,25 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         const name2 = characterData.data.name || '';
         const charFirstMes = characterData.data.first_mes || '';
         const alternateGreetings = characterData.data.alternate_greetings || [];
+        // Load user settings to get name1 (needed for World Info scanning)
+        let name1 = 'You';
+        try {
+            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            if (fs.existsSync(pathToSettings)) {
+                const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
+                const settings = tryParse(settingsContent);
+                if (settings && settings.name1) {
+                    name1 = settings.name1;
+                }
+            }
+        } catch (error) {
+            console.warn('[prepare-messages] Failed to load name1 from settings:', error);
+        }
+
         // Load world info entries from all sources (Global + Character)
         let worldInfoBefore = '';
         let worldInfoAfter = '';
+        let depthEntries = []; // World Info entries to insert at specific depths in chat history
         try {
             // Get World Info settings from user settings
             let selectedWorldInfo = [];
@@ -1201,14 +1217,34 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     }
                 }
 
+                // Add current user message to chat history for World Info scanning
+                // (Web behavior: World Info scans all messages including the current user message)
+                const chatHistoryForWI = [...chatHistory];
+                if (user_message && user_message.trim()) {
+                    chatHistoryForWI.push({
+                        name: name1,
+                        is_user: true,
+                        mes: user_message,
+                        send_date: new Date().toISOString(),
+                    });
+                    console.log(`[WI] Current user message added to scan: "${user_message}"`);
+                }
+                console.log(`[WI] Scanning ${chatHistoryForWI.length} messages (${chatHistory.length} from history + ${user_message && user_message.trim() ? 1 : 0} current)`);
+
                 // Check World Info entries against chat history (basic keyword matching)
-                const activatedEntries = checkWorldInfo(sortedEntries, chatHistory, 100);
+                const activatedEntries = checkWorldInfo(sortedEntries, chatHistoryForWI, 100);
+                console.log(`[WI] Activated ${activatedEntries ? activatedEntries.length : 0} entries`);
 
                 if (activatedEntries && activatedEntries.length > 0) {
-                    // Format activated entries by position (Before/After)
+                    // Format activated entries by position (Before/After/ANTop/ANBottom/atDepth/Outlet)
                     const formattedWorldInfo = formatWorldInfo(activatedEntries);
                     worldInfoBefore = formattedWorldInfo.worldInfoBefore;
                     worldInfoAfter = formattedWorldInfo.worldInfoAfter;
+                    // Store depthEntries for later insertion into chat history
+                    depthEntries = formattedWorldInfo.depthEntries || [];
+                    
+                    // TODO: Handle other positions (ANTop, ANBottom, Outlet) in future phases
+                    // atDepth entries will be inserted into chat history after chat history is added
                 }
             }
         } catch (error) {
@@ -1239,8 +1275,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             }
         }
 
-        // Load user settings to get name1, extension settings, and oai_settings
-        let name1 = 'You';
+        // Load user settings to get extension settings and oai_settings
+        // (name1 is already loaded above for World Info scanning)
         let extensionSettings = {};
         let oaiSettings = {};
         try {
@@ -1249,9 +1285,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
                 if (settings) {
-                    if (settings.name1) {
-                        name1 = settings.name1;
-                    }
+                    // name1 is already loaded above, skip here
                     // Load extension settings (for Summary, Authors Note, etc.)
                     if (settings.extension_settings) {
                         extensionSettings = settings.extension_settings;
@@ -1428,6 +1462,69 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             role: 'user',
             content: user_message
         });
+
+        // Insert World Info entries at specific depths in chat history
+        // depthEntries is an array of {depth: number, entries: string[], role: number}
+        // depth: position in chat history (0 = before first message, 1 = after first message, etc.)
+        //       negative values count from the end (-1 = before last message, -2 = before second-to-last, etc.)
+        // role: 0 = system, 1 = user, 2 = assistant
+        if (depthEntries && depthEntries.length > 0) {
+            // Sort depthEntries by depth (ascending) to insert from beginning to end
+            const sortedDepthEntries = [...depthEntries].sort((a, b) => {
+                // Handle negative depths (count from end)
+                const depthA = a.depth ?? 0;
+                const depthB = b.depth ?? 0;
+                
+                // If both are negative or both are positive, sort normally
+                if ((depthA < 0 && depthB < 0) || (depthA >= 0 && depthB >= 0)) {
+                    return depthA - depthB;
+                }
+                // Negative depths come after positive depths
+                return depthA < 0 ? 1 : -1;
+            });
+
+            // Calculate insertion points
+            const chatHistoryStartIndex = messages.findIndex(m => m.identifier === 'newMainChat');
+            const chatHistoryLength = messages.length - (chatHistoryStartIndex + 1); // Exclude newMainChat and after
+
+            for (const depthEntry of sortedDepthEntries) {
+                const depth = depthEntry.depth ?? 0;
+                const entries = depthEntry.entries || [];
+                const role = depthEntry.role ?? 0; // 0 = system, 1 = user, 2 = assistant
+                
+                if (entries.length === 0) {
+                    continue;
+                }
+
+                // Convert role number to role string
+                const roleStr = role === 0 ? 'system' : (role === 1 ? 'user' : 'assistant');
+                
+                // Calculate insertion index
+                let insertIndex;
+                if (depth >= 0) {
+                    // Positive depth: insert after 'newMainChat' + depth messages
+                    insertIndex = chatHistoryStartIndex + 1 + depth;
+                } else {
+                    // Negative depth: count from the end (before current user message)
+                    // depth -1 = before last message (current user message)
+                    // depth -2 = before second-to-last message, etc.
+                    insertIndex = messages.length + depth; // depth is negative, so this subtracts
+                }
+                
+                // Clamp insertIndex to valid range
+                insertIndex = Math.max(chatHistoryStartIndex + 1, Math.min(insertIndex, messages.length));
+                
+                // Combine all entries for this depth into a single message
+                const combinedContent = entries.join('\n\n');
+                
+                // Insert World Info entry at calculated position
+                messages.splice(insertIndex, 0, {
+                    role: roleStr,
+                    content: combinedContent,
+                    identifier: `worldInfoAtDepth_${depth}_${role}`
+                });
+            }
+        }
 
         // Apply Summary extension prompt for IN_CHAT position (at depth)
         // Summary position: 0 = IN_PROMPT (already added above), 1 = IN_CHAT (at depth)

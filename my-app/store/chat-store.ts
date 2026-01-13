@@ -153,19 +153,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
       
-      // 새 채팅인 경우 Character의 첫 메시지를 서버에만 저장
+      // 새 채팅인 경우 Character의 첫 메시지를 서버에 저장하고 앱 화면에도 표시
       if (isNewChat && characterData && characterData.data && characterData.data.first_mes) {
         const firstMes = characterData.data.first_mes;
         const characterName = characterData.data.name || characterData.name || 'Character';
+        const alternateGreetings = characterData.data.alternate_greetings || [];
         
-        // Character의 첫 메시지를 서버에만 저장 (프롬프트에 포함되도록)
-        // 앱 화면에는 표시하지 않으므로 로컬 messages에는 추가하지 않음
+        // Alternate greetings가 있으면 랜덤 선택
+        let firstMessageText = firstMes;
+        if (Array.isArray(alternateGreetings) && alternateGreetings.length > 0) {
+          const allGreetings = [firstMes, ...alternateGreetings].filter(x => x);
+          firstMessageText = allGreetings[Math.floor(Math.random() * allGreetings.length)];
+        }
+        
+        // 매크로 치환 (간단한 버전)
+        firstMessageText = firstMessageText
+          .replace(/\{\{char\}\}/g, characterName)
+          .replace(/\{\{user\}\}/g, useAppSettingsStore.getState().settings.userName || 'You')
+          .replace(/\{\{charIfNotGroup\}\}/g, characterName);
+        
         try {
           const userName = useAppSettingsStore.getState().settings.userName || 'You';
           const firstMessageForServer = {
             name: characterName,
             is_user: false,
-            mes: firstMes,
+            mes: firstMessageText.trim(),
             send_date: new Date().toISOString(),
             extra: {},
           };
@@ -178,17 +190,30 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             firstMessageForServer,
           ];
           await apiClient.saveChat(characterId, fileName, serverChatData);
+          
+          // 첫 메시지를 앱 화면에도 표시
+          const firstAppMessage = convertServerMessageToAppMessage(firstMessageForServer, 0);
+          set({ 
+            messages: [firstAppMessage],
+            currentChatId: fileName,
+            isLoading: false 
+          });
         } catch (saveError) {
           console.error('[ChatStore] 첫 메시지 저장 실패:', saveError);
-          // 저장 실패해도 계속 진행
+          // 저장 실패해도 첫 메시지는 표시
+          const firstAppMessage: ChatMessage = {
+            id: Date.now().toString(),
+            text: firstMessageText.trim(),
+            isUser: false,
+            timestamp: Date.now(),
+            name: characterName,
+          };
+          set({ 
+            messages: [firstAppMessage],
+            currentChatId: fileName,
+            isLoading: false 
+          });
         }
-        
-        // 앱 화면에는 빈 메시지 배열로 설정 (첫 메시지는 표시하지 않음)
-        set({ 
-          messages: [],
-          currentChatId: fileName,
-          isLoading: false 
-        });
         
         return;
       }
