@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1151,15 +1151,46 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         const name2 = characterData.data.name || '';
         const charFirstMes = characterData.data.first_mes || '';
         const alternateGreetings = characterData.data.alternate_greetings || [];
-        // Load world info if character has one (using new getCharacterWorldInfo function)
+        // Load world info entries from all sources (Global + Character)
         let worldInfoBefore = '';
         let worldInfoAfter = '';
         try {
-            const characterWorldInfoEntries = getCharacterWorldInfo(request.user.directories, characterData);
-            if (characterWorldInfoEntries && characterWorldInfoEntries.length > 0) {
+            // Get World Info settings from user settings
+            let selectedWorldInfo = [];
+            let characterStrategy = world_info_insertion_strategy.evenly;
+            
+            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            if (fs.existsSync(pathToSettings)) {
+                const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
+                const settings = tryParse(settingsContent);
+                if (settings) {
+                    // Get selected_world_info (can be string or array)
+                    if (settings.selected_world_info) {
+                        if (Array.isArray(settings.selected_world_info)) {
+                            selectedWorldInfo = settings.selected_world_info;
+                        } else if (typeof settings.selected_world_info === 'string') {
+                            selectedWorldInfo = [settings.selected_world_info];
+                        }
+                    }
+                    // Get world_info_character_strategy (default: evenly = 0)
+                    if (typeof settings.world_info_character_strategy === 'number') {
+                        characterStrategy = settings.world_info_character_strategy;
+                    }
+                }
+            }
+
+            // Get sorted entries from all sources
+            const sortedEntries = getSortedEntries(
+                request.user.directories,
+                characterData,
+                selectedWorldInfo,
+                characterStrategy
+            );
+
+            if (sortedEntries && sortedEntries.length > 0) {
                 // Simple formatting: combine all entries
                 // TODO: Implement proper world info scanning based on chat history
-                const worldInfoText = characterWorldInfoEntries
+                const worldInfoText = sortedEntries
                     .filter(entry => entry && entry.content)
                     .map(entry => {
                         const keys = entry.key ? entry.key.join(', ') : '';

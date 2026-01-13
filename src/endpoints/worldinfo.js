@@ -80,6 +80,115 @@ export function getCharacterWorldInfo(directories, characterData) {
     return entries;
 }
 
+/**
+ * Gets Global World Info entries
+ * Loads World Info files specified in selected_world_info settings
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {string[]} selectedWorldInfo Array of World Info names to load
+ * @returns {Array<object>} Array of World Info entries with 'world' field added
+ */
+export function getGlobalLore(directories, selectedWorldInfo) {
+    if (!selectedWorldInfo || !Array.isArray(selectedWorldInfo) || selectedWorldInfo.length === 0) {
+        return [];
+    }
+
+    let entries = [];
+    for (const worldName of selectedWorldInfo) {
+        const worldInfo = readWorldInfoFile(directories, worldName, true);
+        if (worldInfo && worldInfo.entries) {
+            const newEntries = Object.keys(worldInfo.entries).map((uid) => {
+                const entry = worldInfo.entries[uid];
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+                    return null;
+                }
+                // Ensure key and keysecondary are arrays
+                if (!Array.isArray(entry.key)) {
+                    entry.key = [];
+                }
+                if (!Array.isArray(entry.keysecondary)) {
+                    entry.keysecondary = [];
+                }
+                return {
+                    ...entry,
+                    uid: Number(uid) || entry.uid || 0,
+                    world: worldName,
+                };
+            }).filter(entry => entry !== null);
+            entries = entries.concat(newEntries);
+        }
+    }
+
+    return entries;
+}
+
+/**
+ * World Info insertion strategy enum
+ */
+export const world_info_insertion_strategy = {
+    evenly: 0,
+    character_first: 1,
+    global_first: 2,
+};
+
+/**
+ * Sort function for World Info entries (higher order comes first)
+ * @param {object} a First entry
+ * @param {object} b Second entry
+ * @returns {number} Sort comparison result
+ */
+function sortWorldInfoEntries(a, b) {
+    const orderA = a.order || 100;
+    const orderB = b.order || 100;
+    return orderB - orderA; // Higher order comes first
+}
+
+/**
+ * Gets sorted World Info entries from all sources
+ * Combines Global Lore and Character Lore, then sorts them according to strategy
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {object} characterData Character data object
+ * @param {string[]} selectedWorldInfo Array of selected World Info names (from settings)
+ * @param {number} characterStrategy Strategy for combining Character and Global Lore (0=evenly, 1=character_first, 2=global_first)
+ * @returns {Array<object>} Sorted array of World Info entries
+ */
+export function getSortedEntries(directories, characterData, selectedWorldInfo = [], characterStrategy = 0) {
+    try {
+        // Get entries from both sources
+        const globalLore = getGlobalLore(directories, selectedWorldInfo);
+        const characterLore = getCharacterWorldInfo(directories, characterData);
+
+        // Check for duplicates (if character's world is already in global lore, skip it)
+        const characterWorldName = characterData?.data?.extensions?.world || characterData?.data?.world || '';
+        const globalLoreWorlds = new Set(selectedWorldInfo);
+        
+        // Filter out character lore if it's already in global lore
+        const filteredCharacterLore = characterWorldName && globalLoreWorlds.has(characterWorldName)
+            ? []
+            : characterLore;
+
+        let entries;
+
+        // Sort according to strategy
+        switch (Number(characterStrategy)) {
+            case world_info_insertion_strategy.character_first:
+                entries = [...filteredCharacterLore.sort(sortWorldInfoEntries), ...globalLore.sort(sortWorldInfoEntries)];
+                break;
+            case world_info_insertion_strategy.global_first:
+                entries = [...globalLore.sort(sortWorldInfoEntries), ...filteredCharacterLore.sort(sortWorldInfoEntries)];
+                break;
+            case world_info_insertion_strategy.evenly:
+            default:
+                entries = [...globalLore, ...filteredCharacterLore].sort(sortWorldInfoEntries);
+                break;
+        }
+
+        return entries;
+    } catch (error) {
+        console.error('[WI] Error getting sorted entries:', error);
+        return [];
+    }
+}
+
 export const router = express.Router();
 
 router.post('/list', async (request, response) => {

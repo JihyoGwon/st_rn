@@ -18,6 +18,7 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] 모든 엔트리 포함 (현재는 모든 엔트리 포함) ✅
 - [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함) ✅
 - [x] **Phase 1.1**: 캐릭터 월드인포 로드 함수 구현 (`getCharacterWorldInfo`) ✅
+- [x] **Phase 1.2**: 엔트리 수집 로직 구현 (`getSortedEntries`, `getGlobalLore`) ✅
 
 ### 미구현
 - [ ] 키워드 기반 필터링 (스캔 로직 미구현)
@@ -96,7 +97,7 @@ export function getCharacterWorldInfo(directories, characterData) {
 
 **예상 작업 시간**: 2-3시간
 
-#### 1.2 엔트리 수집 로직 구현
+#### 1.2 엔트리 수집 로직 구현 ✅
 **목표**: Global Lore와 Character Lore 엔트리 수집
 
 **구현 내용**:
@@ -107,13 +108,24 @@ export function getCharacterWorldInfo(directories, characterData) {
 
 **주요 함수**:
 ```javascript
-async function getSortedEntries(characterId, globalWorldInfo) {
+export function getGlobalLore(directories, selectedWorldInfo) {
+    // 전역 월드인포 엔트리 수집
+}
+
+export function getSortedEntries(directories, characterData, selectedWorldInfo, characterStrategy) {
     // 1. Global Lore 수집
     // 2. Character Lore 수집
     // 3. 전략에 따라 정렬
     // 4. 엔트리 반환
 }
 ```
+
+**구현 완료**:
+- ✅ `src/endpoints/worldinfo.js`에 `getGlobalLore` 함수 추가
+- ✅ `src/endpoints/worldinfo.js`에 `getSortedEntries` 함수 추가
+- ✅ `world_info_insertion_strategy` enum 추가
+- ✅ `sortWorldInfoEntries` 정렬 함수 추가
+- ✅ `src/endpoints/chats.js`에서 설정 로드 및 `getSortedEntries` 사용
 
 **예상 작업 시간**: 3-4시간
 
