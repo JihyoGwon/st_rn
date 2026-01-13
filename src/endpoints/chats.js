@@ -1151,19 +1151,26 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         const name2 = characterData.data.name || '';
         const charFirstMes = characterData.data.first_mes || '';
         const alternateGreetings = characterData.data.alternate_greetings || [];
-        // Load user settings to get name1 (needed for World Info scanning)
+        // Load user settings to get name1 and extensionSettings (needed for World Info scanning)
         let name1 = 'You';
+        let extensionSettings = {};
         try {
             const pathToSettings = path.join(request.user.directories.root, 'settings.json');
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
-                if (settings && settings.name1) {
-                    name1 = settings.name1;
+                if (settings) {
+                    if (settings.name1) {
+                        name1 = settings.name1;
+                    }
+                    // Load extension settings (for vector search, etc.)
+                    if (settings.extension_settings) {
+                        extensionSettings = settings.extension_settings;
+                    }
                 }
             }
         } catch (error) {
-            console.warn('[prepare-messages] Failed to load name1 from settings:', error);
+            console.warn('[prepare-messages] Failed to load name1 and extensionSettings from settings:', error);
         }
 
         // Load world info entries from all sources (Global + Character)
@@ -1353,9 +1360,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             }
         }
 
-        // Load user settings to get extension settings and oai_settings
-        // (name1 is already loaded above for World Info scanning)
-        let extensionSettings = {};
+        // Load user settings to get oai_settings
+        // (name1 and extensionSettings are already loaded above for World Info scanning)
         let oaiSettings = {};
         try {
             const pathToSettings = path.join(request.user.directories.root, 'settings.json');
@@ -1363,11 +1369,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
                 if (settings) {
-                    // name1 is already loaded above, skip here
-                    // Load extension settings (for Summary, Authors Note, etc.)
-                    if (settings.extension_settings) {
-                        extensionSettings = settings.extension_settings;
-                    }
+                    // name1 and extensionSettings are already loaded above, skip here
                     // Load oai_settings (for Main Prompt, etc.)
                     if (settings.oai_settings) {
                         oaiSettings = settings.oai_settings;
@@ -1375,7 +1377,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 }
             }
         } catch (error) {
-            console.warn('[prepare-messages] Failed to load user settings:', error);
+            console.warn('[prepare-messages] Failed to load oai_settings:', error);
         }
         
         // Get Main Prompt from oai_settings.prompts
