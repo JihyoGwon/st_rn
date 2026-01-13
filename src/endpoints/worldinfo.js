@@ -565,6 +565,83 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
 }
 
 /**
+ * Groups World Info entries by world name
+ * Filters entries based on vectorization settings and validity
+ * @param {Array<object>} entries Array of World Info entries
+ * @param {boolean} enabledForAll Whether all entries should be vectorized (enabled_for_all setting)
+ * @returns {object} Object with world names as keys and arrays of entries as values
+ */
+function groupEntriesByWorld(entries, enabledForAll = false) {
+    const groupedEntries = {};
+
+    if (!entries || !Array.isArray(entries)) {
+        return groupedEntries;
+    }
+
+    for (const entry of entries) {
+        // Skip orphaned entries (without world field)
+        if (!entry.world) {
+            console.debug(`[WI] Skipped entry without world field: ${entry.uid || 'unknown'}`);
+            continue;
+        }
+
+        // Skip disabled entries
+        if (entry.disable === true) {
+            console.debug(`[WI] Skipped disabled entry: ${entry.uid || 'unknown'}`);
+            continue;
+        }
+
+        // Skip entries without content
+        if (!entry.content || typeof entry.content !== 'string' || entry.content.trim().length === 0) {
+            console.debug(`[WI] Skipped entry without content: ${entry.uid || 'unknown'}`);
+            continue;
+        }
+
+        // Skip non-vectorized entries (unless enabled_for_all is true)
+        if (!entry.vectorized && !enabledForAll) {
+            console.debug(`[WI] Skipped non-vectorized entry: ${entry.uid || 'unknown'}`);
+            continue;
+        }
+
+        // Group by world name
+        if (!Object.hasOwnProperty.call(groupedEntries, entry.world)) {
+            groupedEntries[entry.world] = [];
+        }
+
+        groupedEntries[entry.world].push(entry);
+    }
+
+    return groupedEntries;
+}
+
+/**
+ * Gets saved hashes from vector index for a specific world
+ * @param {string} world World name
+ * @param {string} vectorSource Vector source (e.g., 'transformers')
+ * @param {object} sourceSettings Source settings for vector API
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @returns {Promise<number[]>} Array of saved hashes
+ */
+async function getSavedHashesForWorld(world, vectorSource, sourceSettings, directories) {
+    try {
+        // Generate collection ID from world name
+        const collectionId = `world_${getStringHash(world)}`;
+
+        // Import vector functions
+        const { getSavedHashes } = await import('./vectors.js');
+
+        // Get saved hashes from vector index
+        const hashes = await getSavedHashes(directories, collectionId, vectorSource, sourceSettings);
+
+        return hashes || [];
+    } catch (error) {
+        console.warn(`[WI] Failed to get saved hashes for world "${world}":`, error);
+        // Return empty array on error (treat as no existing entries)
+        return [];
+    }
+}
+
+/**
  * Activates vectorized World Info entries using vector search
  * @param {Array<object>} vectorizedEntries Array of vectorized World Info entries
  * @param {Array<object>} chatHistory Array of chat messages

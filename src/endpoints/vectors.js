@@ -280,7 +280,7 @@ async function getIndex(directories, collectionId, source, sourceSettings) {
  * @param {Object} sourceSettings - Settings for the source, if it needs any
  * @param {{ hash: number; text: string; index: number; }[]} items - The items to insert
  */
-async function insertVectorItems(directories, collectionId, source, sourceSettings, items) {
+export async function insertVectorItems(directories, collectionId, source, sourceSettings, items) {
     const store = await getIndex(directories, collectionId, source, sourceSettings);
 
     await store.beginUpdate();
@@ -304,7 +304,7 @@ async function insertVectorItems(directories, collectionId, source, sourceSettin
  * @param {Object} sourceSettings - Settings for the source, if it needs any
  * @returns {Promise<number[]>} - The hashes of the items in the collection
  */
-async function getSavedHashes(directories, collectionId, source, sourceSettings) {
+export async function getSavedHashes(directories, collectionId, source, sourceSettings) {
     const store = await getIndex(directories, collectionId, source, sourceSettings);
 
     const items = await store.listItems();
@@ -321,7 +321,7 @@ async function getSavedHashes(directories, collectionId, source, sourceSettings)
  * @param {Object} sourceSettings - Settings for the source, if it needs any
  * @param {number[]} hashes - The hashes of the items to delete
  */
-async function deleteVectorItems(directories, collectionId, source, sourceSettings, hashes) {
+export async function deleteVectorItems(directories, collectionId, source, sourceSettings, hashes) {
     const store = await getIndex(directories, collectionId, source, sourceSettings);
     const items = await store.listItemsByMetadata({ hash: { '$in': hashes } });
 
