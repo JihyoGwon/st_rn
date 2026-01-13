@@ -76,13 +76,16 @@ export function getCharacterWorldInfo(directories, characterData) {
             world: worldInfoName,
         };
         
-        // Extract caseSensitive and matchWholeWords from extensions if they exist
+        // Extract caseSensitive, matchWholeWords, and scanDepth from extensions if they exist
         if (entry.extensions) {
             if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
                 normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
             }
             if (entry.extensions.match_whole_words !== undefined && normalizedEntry.matchWholeWords === undefined) {
                 normalizedEntry.matchWholeWords = entry.extensions.match_whole_words;
+            }
+            if (entry.extensions.scan_depth !== undefined && normalizedEntry.scanDepth === undefined) {
+                normalizedEntry.scanDepth = entry.extensions.scan_depth;
             }
         }
         
@@ -128,13 +131,16 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                     world: worldName,
                 };
                 
-                // Extract caseSensitive and matchWholeWords from extensions if they exist
+                // Extract caseSensitive, matchWholeWords, and scanDepth from extensions if they exist
                 if (entry.extensions) {
                     if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
                         normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
                     }
                     if (entry.extensions.match_whole_words !== undefined && normalizedEntry.matchWholeWords === undefined) {
                         normalizedEntry.matchWholeWords = entry.extensions.match_whole_words;
+                    }
+                    if (entry.extensions.scan_depth !== undefined && normalizedEntry.scanDepth === undefined) {
+                        normalizedEntry.scanDepth = entry.extensions.scan_depth;
                     }
                 }
                 
@@ -339,30 +345,29 @@ function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic, cas
 /**
  * Checks World Info entries against chat history and returns activated entries
  * Checks Primary Keywords and Secondary Keywords based on selective logic
- * Supports case sensitivity and whole word matching (global and entry-specific)
+ * Supports case sensitivity, whole word matching, and scan depth (global and entry-specific)
  * @param {Array<object>} entries Array of World Info entries
  * @param {Array<object>} chatHistory Array of chat messages
- * @param {number} scanDepth Maximum depth to scan (default: 100)
+ * @param {number} globalScanDepth Global scan depth setting (default: 100)
  * @param {boolean} globalCaseSensitive Global case sensitivity setting (default: false)
  * @param {boolean} globalMatchWholeWords Global whole word matching setting (default: false)
  * @returns {Array<object>} Array of activated entries
  */
-export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false) {
+export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false) {
     if (!entries || entries.length === 0) {
         return [];
     }
 
-    // Convert chat history to searchable text
-    const chatText = convertChatToText(chatHistory, scanDepth);
-    console.log(`[WI] Converted chat text (length: ${chatText.length}): "${chatText.substring(0, 200)}${chatText.length > 200 ? '...' : ''}"`);
-
-    if (!chatText) {
-        // No chat text to search, return empty array
-        console.log(`[WI] No chat text to search`);
+    if (!chatHistory || chatHistory.length === 0) {
+        // No chat history to search, return empty array
+        console.log(`[WI] No chat history to search`);
         return [];
     }
 
     const activatedEntries = [];
+    
+    // Cache for converted chat texts by scan depth (to avoid redundant conversions)
+    const chatTextCache = new Map();
 
     for (const entry of entries) {
         // Skip entries without keys
@@ -381,6 +386,22 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100, globa
             continue;
         }
 
+        // Get entry-specific scan depth (override global if specified)
+        // entry.scanDepth can be null/undefined (use global), or a number
+        const entryScanDepth = entry.scanDepth !== null && entry.scanDepth !== undefined
+            ? entry.scanDepth
+            : globalScanDepth;
+        
+        // Ensure scanDepth is a valid positive number
+        const scanDepth = (typeof entryScanDepth === 'number' && entryScanDepth > 0) 
+            ? Math.min(entryScanDepth, 1000) // Cap at 1000 for safety
+            : globalScanDepth;
+        
+        // Log entry-specific scan depth if different from global
+        if (entryScanDepth !== null && entryScanDepth !== undefined && entryScanDepth !== globalScanDepth) {
+            console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" using scan depth: ${scanDepth} (entry override)`);
+        }
+
         // Get entry-specific settings (override global if specified)
         // entry.caseSensitive can be null (use global), true, or false
         // entry.matchWholeWords can be null (use global), true, or false
@@ -390,6 +411,25 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100, globa
         const matchWholeWords = entry.matchWholeWords !== null && entry.matchWholeWords !== undefined
             ? entry.matchWholeWords
             : globalMatchWholeWords;
+
+        // Convert chat history to searchable text (use cache if available)
+        let chatText;
+        if (chatTextCache.has(scanDepth)) {
+            chatText = chatTextCache.get(scanDepth);
+        } else {
+            // Calculate actual messages scanned (may be less than scanDepth if chatHistory is shorter)
+            const actualScanned = Math.min(chatHistory.length, scanDepth);
+            chatText = convertChatToText(chatHistory, scanDepth);
+            chatTextCache.set(scanDepth, chatText);
+            if (actualScanned < chatHistory.length) {
+                console.log(`[WI] Scan depth ${scanDepth}: scanning last ${actualScanned} messages out of ${chatHistory.length} total`);
+            }
+        }
+
+        if (!chatText) {
+            // No chat text to search for this entry, skip
+            continue;
+        }
 
         // Check Primary Keywords
         let primaryMatch = false;
@@ -434,6 +474,11 @@ export function checkWorldInfo(entries, chatHistory = [], scanDepth = 100, globa
         if (secondaryMatch) {
             activatedEntries.push(entry);
         }
+    }
+
+    // Log scan depth usage if multiple depths were used
+    if (chatTextCache.size > 1) {
+        console.log(`[WI] Used ${chatTextCache.size} different scan depths: ${Array.from(chatTextCache.keys()).join(', ')}`);
     }
 
     return activatedEntries;

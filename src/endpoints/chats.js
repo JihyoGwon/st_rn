@@ -1176,6 +1176,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             let characterStrategy = world_info_insertion_strategy.evenly;
             let globalCaseSensitive = false;
             let globalMatchWholeWords = false;
+            let globalScanDepth = 100; // Default scan depth
             
             const pathToSettings = path.join(request.user.directories.root, 'settings.json');
             if (fs.existsSync(pathToSettings)) {
@@ -1195,7 +1196,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                         characterStrategy = settings.world_info_character_strategy;
                     }
                     
-                    // Get global World Info settings for case sensitivity and whole word matching
+                    // Get global World Info settings
                     if (settings.world_info_settings) {
                         if (typeof settings.world_info_settings.world_info_case_sensitive === 'boolean') {
                             globalCaseSensitive = settings.world_info_settings.world_info_case_sensitive;
@@ -1203,6 +1204,13 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                         if (typeof settings.world_info_settings.world_info_match_whole_words === 'boolean') {
                             globalMatchWholeWords = settings.world_info_settings.world_info_match_whole_words;
                         }
+                    }
+                    
+                    // Get world_info_depth (can be in root settings or world_info_settings)
+                    if (typeof settings.world_info_depth === 'number' && settings.world_info_depth > 0) {
+                        globalScanDepth = Math.min(settings.world_info_depth, 1000); // Cap at 1000
+                    } else if (settings.world_info_settings && typeof settings.world_info_settings.world_info_depth === 'number' && settings.world_info_settings.world_info_depth > 0) {
+                        globalScanDepth = Math.min(settings.world_info_settings.world_info_depth, 1000);
                     }
                 }
             }
@@ -1241,13 +1249,13 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     });
                     console.log(`[WI] Current user message added to scan: "${user_message}"`);
                 }
-                console.log(`[WI] Scanning ${chatHistoryForWI.length} messages (${chatHistory.length} from history + ${user_message && user_message.trim() ? 1 : 0} current)`);
+                console.log(`[WI] Total messages: ${chatHistoryForWI.length} (${chatHistory.length} from history + ${user_message && user_message.trim() ? 1 : 0} current), Global scan depth: ${globalScanDepth}`);
 
-                // Check World Info entries against chat history (with case sensitivity and whole word matching)
+                // Check World Info entries against chat history (with case sensitivity, whole word matching, and scan depth)
                 const activatedEntries = checkWorldInfo(
                     sortedEntries, 
                     chatHistoryForWI, 
-                    100,
+                    globalScanDepth,
                     globalCaseSensitive,
                     globalMatchWholeWords
                 );

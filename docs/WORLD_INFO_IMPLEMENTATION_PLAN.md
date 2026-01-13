@@ -318,6 +318,14 @@ export function formatWorldInfo(activatedEntries) {
 
 **예상 작업 시간**: 2-3시간
 
+**구현 완료**:
+- ✅ `checkWorldInfo` 함수에 전역 `globalScanDepth` 파라미터 추가
+- ✅ 엔트리별 `scanDepth` 우선순위 로직 구현 (`entry.scanDepth ?? globalScanDepth`)
+- ✅ 각 엔트리마다 개별 `scanDepth`를 사용하여 채팅 텍스트 변환 (캐시 사용으로 성능 최적화)
+- ✅ `getCharacterWorldInfo`와 `getGlobalLore`에서 `extensions.scan_depth` 필드 정규화
+- ✅ `settings.json`에서 `world_info_depth` 로드 (root 또는 `world_info_settings` 내부)
+- ✅ `scanDepth` 유효성 검사 및 최대값 제한 (1000)
+
 #### 3.3 트리거 확률 구현
 **목표**: Probability 및 Use Probability 지원
 
