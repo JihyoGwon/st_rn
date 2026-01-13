@@ -642,6 +642,127 @@ async function getSavedHashesForWorld(world, vectorSource, sourceSettings, direc
 }
 
 /**
+ * Synchronizes World Info entries with vector index
+ * Adds new entries and removes deleted entries from the vector index
+ * @param {Array<object>} entries All World Info entries (from getSortedEntries)
+ * @param {object} vectorSettings Vector extension settings
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {import('express').Request} request Express request object (for vector API call)
+ * @returns {Promise<object>} Object with synchronization results { synced: number, added: number, deleted: number }
+ */
+export async function syncWorldInfoVectors(entries, vectorSettings, directories, request) {
+    if (!vectorSettings || !vectorSettings.enabled_world_info) {
+        console.log('[WI] Vector synchronization disabled for World Info');
+        return { synced: 0, added: 0, deleted: 0 };
+    }
+
+    if (!entries || !Array.isArray(entries) || entries.length === 0) {
+        console.log('[WI] No entries to synchronize');
+        return { synced: 0, added: 0, deleted: 0 };
+    }
+
+    // Get vector source and settings
+    const vectorSource = vectorSettings.source || 'transformers';
+    
+    // Create a mock request object with vector settings for getSourceSettings
+    const mockRequest = {
+        body: {
+            model: vectorSettings.model || (vectorSource === 'transformers' ? '' : undefined),
+            apiUrl: vectorSettings.apiUrl,
+            extrasUrl: vectorSettings.extrasUrl,
+            extrasKey: vectorSettings.extrasKey,
+            keep: vectorSettings.keep,
+            embeddings: vectorSettings.embeddings,
+        }
+    };
+
+    // Import vector functions
+    const { getSourceSettings, insertVectorItems, deleteVectorItems } = await import('./vectors.js');
+    const sourceSettings = getSourceSettings(vectorSource, mockRequest);
+
+    // Group entries by world (filtering and grouping)
+    const enabledForAll = vectorSettings.enabled_for_all || false;
+    const groupedEntries = groupEntriesByWorld(entries, enabledForAll);
+
+    if (Object.keys(groupedEntries).length === 0) {
+        console.log('[WI] No valid vectorized entries to synchronize');
+        return { synced: 0, added: 0, deleted: 0 };
+    }
+
+    console.log(`[WI] Starting vector synchronization for ${Object.keys(groupedEntries).length} world(s)`);
+
+    let totalAdded = 0;
+    let totalDeleted = 0;
+    const syncedWorlds = [];
+
+    // Synchronize each world
+    for (const world in groupedEntries) {
+        try {
+            const worldEntries = groupedEntries[world];
+            const collectionId = `world_${getStringHash(world)}`;
+
+            // Get existing hashes from vector index
+            const hashesInCollection = await getSavedHashesForWorld(world, vectorSource, sourceSettings, directories);
+
+            // Calculate current entry hashes
+            const currentHashes = worldEntries.map(entry => getStringHash(entry.content));
+
+            // Find new entries (not in existing hashes)
+            const newEntries = worldEntries.filter(entry => {
+                const entryHash = getStringHash(entry.content);
+                return !hashesInCollection.includes(entryHash);
+            });
+
+            // Find deleted entries (in existing hashes but not in current entries)
+            const deletedHashes = hashesInCollection.filter(hash => !currentHashes.includes(hash));
+
+            // Insert new entries
+            if (newEntries.length > 0) {
+                try {
+                    const itemsToInsert = newEntries.map(entry => ({
+                        hash: getStringHash(entry.content),
+                        text: entry.content,
+                        index: entry.uid || 0
+                    }));
+
+                    await insertVectorItems(directories, collectionId, vectorSource, sourceSettings, itemsToInsert);
+                    totalAdded += newEntries.length;
+                    console.log(`[WI] Added ${newEntries.length} new entries to world "${world}" (collection: ${collectionId})`);
+                } catch (error) {
+                    console.error(`[WI] Failed to insert entries for world "${world}":`, error);
+                    // Continue with other worlds even if one fails
+                }
+            }
+
+            // Delete removed entries
+            if (deletedHashes.length > 0) {
+                try {
+                    await deleteVectorItems(directories, collectionId, vectorSource, sourceSettings, deletedHashes);
+                    totalDeleted += deletedHashes.length;
+                    console.log(`[WI] Deleted ${deletedHashes.length} old entries from world "${world}" (collection: ${collectionId})`);
+                } catch (error) {
+                    console.error(`[WI] Failed to delete entries for world "${world}":`, error);
+                    // Continue with other worlds even if one fails
+                }
+            }
+
+            syncedWorlds.push(world);
+        } catch (error) {
+            console.error(`[WI] Failed to synchronize world "${world}":`, error);
+            // Continue with other worlds even if one fails
+        }
+    }
+
+    console.log(`[WI] Vector synchronization completed: ${syncedWorlds.length} world(s) synced, ${totalAdded} added, ${totalDeleted} deleted`);
+
+    return {
+        synced: syncedWorlds.length,
+        added: totalAdded,
+        deleted: totalDeleted
+    };
+}
+
+/**
  * Activates vectorized World Info entries using vector search
  * @param {Array<object>} vectorizedEntries Array of vectorized World Info entries
  * @param {Array<object>} chatHistory Array of chat messages
