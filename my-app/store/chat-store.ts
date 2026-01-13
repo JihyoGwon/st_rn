@@ -193,30 +193,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return;
       }
       
-      // 첫 번째 assistant 메시지가 character의 첫 메시지인지 확인하고 필터링
-      // (프롬프트에는 포함되지만 앱 화면에는 표시하지 않음)
-      let filteredMessages = messagesToConvert;
-      
-      if (messagesToConvert.length > 0 && characterData) {
-        // 첫 번째 메시지가 assistant 메시지인지 확인
-        const firstMessage = messagesToConvert[0];
-        if (!firstMessage.is_user && (firstMessage.name || firstMessage.character_name)) {
-          if (characterData.data && characterData.data.first_mes) {
-            const firstMes = characterData.data.first_mes.trim();
-            const firstMessageText = (firstMessage.mes || '').trim();
-            
-            // 첫 메시지가 character의 first_mes와 일치하거나 비슷하면 제외
-            if (firstMes && 
-                (firstMessageText === firstMes || 
-                 firstMessageText.startsWith(firstMes.substring(0, Math.min(20, firstMes.length))))) {
-              filteredMessages = messagesToConvert.slice(1);
-            }
-          }
-        }
-      }
-      
-      // 서버 메시지를 앱 메시지로 변환
-      const appMessages = filteredMessages.map((msg, index) => 
+      // 서버 메시지를 앱 메시지로 변환 (첫 메시지 포함)
+      const appMessages = messagesToConvert.map((msg, index) => 
         convertServerMessageToAppMessage(msg, index)
       );
       
