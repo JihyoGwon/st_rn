@@ -164,7 +164,7 @@ async function getBatchVector(source, sourceSettings, texts, isQuery, directorie
  * @param {object} request - The HTTP request object.
  * @returns {object} - An object that can be used as `sourceSettings` in functions that take that parameter.
  */
-function getSourceSettings(source, request) {
+export function getSourceSettings(source, request) {
     switch (source) {
         case 'togetherai':
             return {
@@ -367,7 +367,7 @@ async function queryCollection(directories, collectionId, source, sourceSettings
  *
  * @returns {Promise<Record<string, { hashes: number[], metadata: object[] }>>} - The top K results from each collection
  */
-async function multiQueryCollection(directories, collectionIds, source, sourceSettings, searchText, topK, threshold) {
+export async function multiQueryCollection(directories, collectionIds, source, sourceSettings, searchText, topK, threshold) {
     const vector = await getVector(source, sourceSettings, searchText, true, directories);
     const results = [];
 
@@ -395,6 +395,10 @@ async function multiQueryCollection(directories, collectionIds, source, sourceSe
 
         groupedResults[result.collectionId].hashes.push(Number(result.result.item.metadata.hash));
         groupedResults[result.collectionId].metadata.push(result.result.item.metadata);
+        
+        // Log score for debugging
+        const entryText = result.result.item.metadata.text ? result.result.item.metadata.text.substring(0, 50) + '...' : 'N/A';
+        console.log(`[Vectors] Collection ${result.collectionId}: Score ${result.result.score.toFixed(3)} (threshold: ${threshold}) - Entry: ${entryText}`);
     }
 
     return groupedResults;

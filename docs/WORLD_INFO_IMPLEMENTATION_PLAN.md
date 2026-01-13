@@ -452,6 +452,16 @@ export function formatWorldInfo(activatedEntries) {
 
 **예상 작업 시간**: 4-5시간
 
+**구현 완료**:
+- ✅ `getStringHash` 함수 추가 (클라이언트와 호환되는 해시 생성)
+- ✅ `getQueryTextForVectorSearch` 함수 추가 (채팅 히스토리에서 쿼리 텍스트 생성)
+- ✅ `checkVectorizedWorldInfo` 함수 추가 (벡터 검색으로 엔트리 활성화)
+- ✅ `checkWorldInfo` 함수 수정 (벡터화된 엔트리와 키워드 엔트리 분리)
+- ✅ `chats.js`에서 벡터 확장 기능 설정 로드 및 벡터 검색 호출
+- ✅ 키워드 매칭 결과와 벡터 검색 결과 병합
+- ✅ `multiQueryCollection`, `getSourceSettings` 함수 export 추가
+- ✅ 벡터 검색 점수 로깅 추가
+
 #### 7.2 출력 타입 구현
 **목표**: Example Messages, Depth Entries 등
 

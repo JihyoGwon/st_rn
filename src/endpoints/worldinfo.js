@@ -1,11 +1,39 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
 import _ from 'lodash';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { tryParse } from '../util.js';
+
+/**
+ * Generates a hash value for a given string (compatible with client-side getStringHash)
+ * Uses the same algorithm as the client-side implementation
+ * @param {string} str Input string
+ * @param {number} seed Seed value (default: 0)
+ * @returns {number} Hash value
+ */
+function getStringHash(str, seed = 0) {
+    if (typeof str !== 'string') {
+        return 0;
+    }
+
+    let h1 = 0xdeadbeef ^ seed;
+    let h2 = 0x41c6ce57 ^ seed;
+    
+    for (let i = 0; i < str.length; i++) {
+        const ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
 
 /**
  * Reads a World Info file and returns its contents
@@ -355,6 +383,28 @@ function checkSecondaryKeywords(chatText, secondaryKeywords, selectiveLogic, cas
 }
 
 /**
+ * Generates query text from chat history for vector search
+ * Takes the most recent N messages and combines them into a query string
+ * @param {Array<object>} chatHistory Array of chat messages
+ * @param {number} queryMessageCount Number of recent messages to include (default: 2)
+ * @returns {string} Query text for vector search
+ */
+function getQueryTextForVectorSearch(chatHistory, queryMessageCount = 2) {
+    if (!chatHistory || chatHistory.length === 0) {
+        return '';
+    }
+
+    // Get recent messages (most recent first)
+    const recentMessages = chatHistory
+        .slice(-queryMessageCount)
+        .filter(item => item && item.mes && typeof item.mes === 'string' && !item.is_system)
+        .map(item => item.mes.trim())
+        .filter(text => text.length > 0);
+
+    return recentMessages.join('\n').trim();
+}
+
+/**
  * Checks World Info entries against chat history and returns activated entries
  * Checks Primary Keywords and Secondary Keywords based on selective logic
  * Supports case sensitivity, whole word matching, and scan depth (global and entry-specific)
@@ -384,11 +434,6 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
     for (const entry of entries) {
         // Skip entries without keys
         if (!entry.key || !Array.isArray(entry.key) || entry.key.length === 0) {
-            continue;
-        }
-
-        // Skip disabled entries
-        if (entry.disable === true) {
             continue;
         }
 
@@ -517,6 +562,141 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
     }
 
     return activatedEntries;
+}
+
+/**
+ * Activates vectorized World Info entries using vector search
+ * @param {Array<object>} vectorizedEntries Array of vectorized World Info entries
+ * @param {Array<object>} chatHistory Array of chat messages
+ * @param {object} vectorSettings Vector extension settings
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {import('express').Request} request Express request object (for vector API call)
+ * @returns {Promise<Array<object>>} Array of activated vectorized entries
+ */
+export async function checkVectorizedWorldInfo(vectorizedEntries, chatHistory, vectorSettings, directories, request) {
+    if (!vectorSettings || !vectorSettings.enabled_world_info) {
+        console.log('[WI] Vector search disabled for World Info');
+        return [];
+    }
+
+    if (!vectorizedEntries || vectorizedEntries.length === 0) {
+        console.log('[WI] No vectorized entries to search');
+        return [];
+    }
+
+    if (!chatHistory || chatHistory.length === 0) {
+        console.log('[WI] No chat history for vector search');
+        return [];
+    }
+
+    // Group entries by world
+    const groupedEntries = {};
+    for (const entry of vectorizedEntries) {
+        // Skip entries without world field
+        if (!entry.world) {
+            console.log(`[WI] Skipped vectorized entry without world field: ${entry.uid}`);
+            continue;
+        }
+
+        // Skip entries without content
+        if (!entry.content || typeof entry.content !== 'string' || entry.content.trim().length === 0) {
+            console.log(`[WI] Skipped vectorized entry without content: ${entry.uid}`);
+            continue;
+        }
+
+        if (!groupedEntries[entry.world]) {
+            groupedEntries[entry.world] = [];
+        }
+        groupedEntries[entry.world].push(entry);
+    }
+
+    if (Object.keys(groupedEntries).length === 0) {
+        console.log('[WI] No valid vectorized entries to search');
+        return [];
+    }
+
+    // Generate collection IDs for each world
+    const collectionIds = [];
+    for (const world in groupedEntries) {
+        const collectionId = `world_${getStringHash(world)}`;
+        collectionIds.push(collectionId);
+    }
+
+    // Generate query text from chat history
+    const queryMessageCount = vectorSettings.query || 2;
+    const queryText = getQueryTextForVectorSearch(chatHistory, queryMessageCount);
+
+    if (!queryText || queryText.trim().length === 0) {
+        console.log('[WI] No query text generated for vector search');
+        return [];
+    }
+
+    console.log(`[WI] Vector search query text (${queryMessageCount} messages): "${queryText.substring(0, 100)}${queryText.length > 100 ? '...' : ''}"`);
+
+    // Call vector search API
+    try {
+        const vectorSource = vectorSettings.source || 'transformers';
+        const maxEntries = vectorSettings.max_entries || 5;
+        const scoreThreshold = vectorSettings.score_threshold || 0.25;
+
+        // Import vector functions
+        const { multiQueryCollection, getSourceSettings } = await import('./vectors.js');
+        
+        // Create a mock request object with vector settings for getSourceSettings
+        // getSourceSettings expects request.body to have source-specific settings
+        const mockRequest = {
+            body: {
+                model: vectorSettings.model || (vectorSource === 'transformers' ? '' : undefined),
+                apiUrl: vectorSettings.apiUrl,
+                extrasUrl: vectorSettings.extrasUrl,
+                extrasKey: vectorSettings.extrasKey,
+                keep: vectorSettings.keep,
+                embeddings: vectorSettings.embeddings,
+            }
+        };
+        
+        // Get source settings from vector settings
+        const sourceSettings = getSourceSettings(vectorSource, mockRequest);
+
+        // Perform vector search
+        const queryResults = await multiQueryCollection(
+            directories,
+            collectionIds,
+            vectorSource,
+            sourceSettings,
+            queryText,
+            maxEntries,
+            scoreThreshold
+        );
+
+        // Extract activated hashes from results
+        const activatedHashes = [];
+        for (const collectionId in queryResults) {
+            if (queryResults[collectionId].hashes) {
+                activatedHashes.push(...queryResults[collectionId].hashes);
+            }
+        }
+
+        if (activatedHashes.length === 0) {
+            console.log('[WI] No vectorized entries activated (no matches above threshold)');
+            return [];
+        }
+
+        // Match entries by content hash
+        const activatedEntries = [];
+        for (const entry of vectorizedEntries) {
+            const entryHash = getStringHash(entry.content);
+            if (activatedHashes.includes(entryHash)) {
+                activatedEntries.push(entry);
+            }
+        }
+
+        console.log(`[WI] Activated ${activatedEntries.length} vectorized entries via vector search`);
+        return activatedEntries;
+    } catch (error) {
+        console.warn('[WI] Vector search failed:', error);
+        return [];
+    }
 }
 
 /**

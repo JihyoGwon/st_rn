@@ -37,28 +37,28 @@
 ### ✅ 필수 항목 (완전한 기능 사용 시)
 
 #### 2.1 기본 스캔 기능
-- [ ] 월드 인포 파일 로드
-- [ ] 월드 인포 엔트리 스캔 (`checkWorldInfo` 함수)
-- [ ] 키워드 매칭 (Primary Keywords)
-- [ ] 보조 키워드 (Secondary Keywords)
-- [ ] 키워드 로직 (AND ANY, AND ALL, NOT ANY, NOT ALL)
-- [ ] 스캔 깊이 (Scan Depth) - 전역 설정
-- [ ] 엔트리별 스캔 깊이 (scanDepth) - 엔트리별 오버라이드
-- [ ] 대소문자 구분 (Case-Sensitive) - 전역 설정
-- [ ] 엔트리별 대소문자 구분 (caseSensitive) - 엔트리별 오버라이드
-- [ ] 전체 단어 매칭 (Whole Words) - 전역 설정
-- [ ] 엔트리별 전체 단어 매칭 (matchWholeWords) - 엔트리별 오버라이드
+- [x] 월드 인포 파일 로드 ✅
+- [x] 월드 인포 엔트리 스캔 (`checkWorldInfo` 함수) ✅
+- [x] 키워드 매칭 (Primary Keywords) ✅
+- [x] 보조 키워드 (Secondary Keywords) ✅
+- [x] 키워드 로직 (AND ANY, AND ALL, NOT ANY, NOT ALL) ✅
+- [x] 스캔 깊이 (Scan Depth) - 전역 설정 ✅
+- [x] 엔트리별 스캔 깊이 (scanDepth) - 엔트리별 오버라이드 ✅
+- [x] 대소문자 구분 (Case-Sensitive) - 전역 설정 ✅
+- [x] 엔트리별 대소문자 구분 (caseSensitive) - 엔트리별 오버라이드 ✅
+- [x] 전체 단어 매칭 (Whole Words) - 전역 설정 ✅
+- [x] 엔트리별 전체 단어 매칭 (matchWholeWords) - 엔트리별 오버라이드 ✅
 - [ ] 그룹 스코어링 (Group Scoring) - 전역 설정
 - [ ] 엔트리별 그룹 스코어링 (useGroupScoring) - 엔트리별 오버라이드
 
 #### 2.2 엔트리 속성
-- [ ] 우선순위 (Priority / Order)
-- [ ] 전략 (Strategy: ↑ Char, ↓ Char 등) - `world_info_character_strategy`
-- [ ] 위치 (Position: Before, After, At Depth, ANTop, ANBottom, Outlet)
-- [ ] 깊이 (Depth) - 엔트리별 depth 설정
-- [ ] 역할 (Role: system, user, assistant) - `extension_prompt_roles`
-- [ ] 트리거 확률 (Trigger % / Probability)
-- [ ] 확률 사용 여부 (Use Probability)
+- [x] 우선순위 (Priority / Order) ✅
+- [x] 전략 (Strategy: ↑ Char, ↓ Char 등) - `world_info_character_strategy` ✅
+- [x] 위치 (Position: Before, After, At Depth, ANTop, ANBottom, Outlet) ✅
+- [x] 깊이 (Depth) - 엔트리별 depth 설정 ✅
+- [x] 역할 (Role: system, user, assistant) - `extension_prompt_roles` ✅
+- [x] 트리거 확률 (Trigger % / Probability) ✅
+- [x] 확률 사용 여부 (Use Probability) ✅
 - [ ] 코멘트 (Comment)
 - [ ] Add Memo (addMemo)
 
@@ -102,13 +102,13 @@
 - [ ] 예산 무시 (Ignore Budget)
 
 #### 2.7 출력 타입
-- [ ] worldInfoBefore / worldInfoAfter 분리
+- [x] worldInfoBefore / worldInfoAfter 분리 ✅
 - [ ] Example Messages (EMEntries)
-- [ ] Depth Entries (WIDepthEntries)
-- [ ] Authors Note Before (ANBeforeEntries)
-- [ ] Authors Note After (ANAfterEntries)
-- [ ] Outlet Entries (outletEntries) - outletName 기반
-- [ ] 월드 인포 포맷팅 (`formatWorldInfo`)
+- [x] Depth Entries (WIDepthEntries) - atDepth 위치 엔트리 프롬프트 삽입 구현됨 ✅
+- [x] Authors Note Before (ANBeforeEntries) - ANTop 엔트리 수집됨 (프롬프트 삽입은 향후 구현 예정) ✅
+- [x] Authors Note After (ANAfterEntries) - ANBottom 엔트리 수집됨 (프롬프트 삽입은 향후 구현 예정) ✅
+- [x] Outlet Entries (outletEntries) - outletName 기반 수집됨 (프롬프트 삽입은 향후 구현 예정) ✅
+- [x] 월드 인포 포맷팅 (`formatWorldInfo`) ✅
 
 #### 2.8 기타
 - [ ] Automation ID (automationId)
@@ -118,9 +118,9 @@
 
 ### ⚠️ 간소화 버전 (기본 기능만)
 - [x] 월드 인포 파일 로드 (`/api/chats/prepare-messages`에서 처리) ✅
-- [x] 모든 엔트리 포함 (현재는 모든 엔트리 포함) ✅
-- [ ] 키워드 기반 필터링 (TODO: 스캔 로직 미구현)
-- [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리 (현재는 모두 Before에 포함) ✅
+- [x] 키워드 기반 필터링 - Primary/Secondary 키워드 매칭 구현됨 ✅
+- [x] 위치 기반 분리 (Before/After) - worldInfoBefore/worldInfoAfter로 분리됨 ✅
+- [x] 엔트리별 스캔 깊이, 대소문자 구분, 전체 단어 매칭, 확률 체크 지원 ✅
 
 ---
 

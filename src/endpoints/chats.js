@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1251,15 +1251,67 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 }
                 console.log(`[WI] Total messages: ${chatHistoryForWI.length} (${chatHistory.length} from history + ${user_message && user_message.trim() ? 1 : 0} current), Global scan depth: ${globalScanDepth}`);
 
-                // Check World Info entries against chat history (with case sensitivity, whole word matching, and scan depth)
-                const activatedEntries = checkWorldInfo(
-                    sortedEntries, 
+                // Separate vectorized and keyword-based entries
+                const keywordEntries = [];
+                const vectorizedEntries = [];
+                
+                for (const entry of sortedEntries) {
+                    if (entry.disable === true) {
+                        continue;
+                    }
+                    
+                    const isVectorized = entry.vectorized === true;
+                    
+                    if (isVectorized) {
+                        // Vectorized entries: require content but may not have keys
+                        if (entry.content && typeof entry.content === 'string' && entry.content.trim().length > 0) {
+                            vectorizedEntries.push(entry);
+                        }
+                    } else {
+                        // Keyword-based entries: require keys
+                        if (entry.key && Array.isArray(entry.key) && entry.key.length > 0) {
+                            keywordEntries.push(entry);
+                        }
+                    }
+                }
+
+                console.log(`[WI] Found ${keywordEntries.length} keyword-based entries, ${vectorizedEntries.length} vectorized entries`);
+
+                // Check keyword-based entries against chat history
+                const keywordActivatedEntries = checkWorldInfo(
+                    keywordEntries, 
                     chatHistoryForWI, 
                     globalScanDepth,
                     globalCaseSensitive,
                     globalMatchWholeWords
                 );
-                console.log(`[WI] Activated ${activatedEntries ? activatedEntries.length : 0} entries`);
+                console.log(`[WI] Activated ${keywordActivatedEntries ? keywordActivatedEntries.length : 0} keyword-based entries`);
+
+                // Check vectorized entries using vector search
+                let vectorActivatedEntries = [];
+                if (vectorizedEntries.length > 0) {
+                    // Load vector extension settings
+                    let vectorSettings = null;
+                    if (extensionSettings && extensionSettings.vectors) {
+                        vectorSettings = extensionSettings.vectors;
+                    }
+                    
+                    if (vectorSettings && vectorSettings.enabled_world_info) {
+                        vectorActivatedEntries = await checkVectorizedWorldInfo(
+                            vectorizedEntries,
+                            chatHistoryForWI,
+                            vectorSettings,
+                            request.user.directories,
+                            request
+                        );
+                    } else {
+                        console.log(`[WI] Vector search disabled or no vector settings found (${vectorizedEntries.length} vectorized entries skipped)`);
+                    }
+                }
+
+                // Merge keyword and vector search results
+                const activatedEntries = [...(keywordActivatedEntries || []), ...vectorActivatedEntries];
+                console.log(`[WI] Total activated entries: ${activatedEntries.length} (${keywordActivatedEntries?.length || 0} keyword + ${vectorActivatedEntries.length} vector)`);
 
                 if (activatedEntries && activatedEntries.length > 0) {
                     // Format activated entries by position (Before/After/ANTop/ANBottom/atDepth/Outlet)
