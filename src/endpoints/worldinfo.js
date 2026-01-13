@@ -76,7 +76,7 @@ export function getCharacterWorldInfo(directories, characterData) {
             world: worldInfoName,
         };
         
-        // Extract caseSensitive, matchWholeWords, and scanDepth from extensions if they exist
+        // Extract caseSensitive, matchWholeWords, scanDepth, probability, and useProbability from extensions if they exist
         if (entry.extensions) {
             if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
                 normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
@@ -86,6 +86,12 @@ export function getCharacterWorldInfo(directories, characterData) {
             }
             if (entry.extensions.scan_depth !== undefined && normalizedEntry.scanDepth === undefined) {
                 normalizedEntry.scanDepth = entry.extensions.scan_depth;
+            }
+            if (entry.extensions.probability !== undefined && normalizedEntry.probability === undefined) {
+                normalizedEntry.probability = entry.extensions.probability;
+            }
+            if (entry.extensions.useProbability !== undefined && normalizedEntry.useProbability === undefined) {
+                normalizedEntry.useProbability = entry.extensions.useProbability;
             }
         }
         
@@ -131,7 +137,7 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                     world: worldName,
                 };
                 
-                // Extract caseSensitive, matchWholeWords, and scanDepth from extensions if they exist
+                // Extract caseSensitive, matchWholeWords, scanDepth, probability, and useProbability from extensions if they exist
                 if (entry.extensions) {
                     if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
                         normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
@@ -141,6 +147,12 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                     }
                     if (entry.extensions.scan_depth !== undefined && normalizedEntry.scanDepth === undefined) {
                         normalizedEntry.scanDepth = entry.extensions.scan_depth;
+                    }
+                    if (entry.extensions.probability !== undefined && normalizedEntry.probability === undefined) {
+                        normalizedEntry.probability = entry.extensions.probability;
+                    }
+                    if (entry.extensions.useProbability !== undefined && normalizedEntry.useProbability === undefined) {
+                        normalizedEntry.useProbability = entry.extensions.useProbability;
                     }
                 }
                 
@@ -471,9 +483,32 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
             matchWholeWords
         );
 
-        if (secondaryMatch) {
-            activatedEntries.push(entry);
+        if (!secondaryMatch) {
+            continue;
         }
+
+        // All keyword checks passed, now check probability
+        // Get entry-specific probability settings (default: probability=100, useProbability=true)
+        const probability = entry.probability !== null && entry.probability !== undefined
+            ? Math.max(0, Math.min(100, entry.probability)) // Clamp to 0-100
+            : 100;
+        const useProbability = entry.useProbability !== null && entry.useProbability !== undefined
+            ? entry.useProbability
+            : true;
+
+        // Probability check: if useProbability is false or probability is 100, always activate
+        if (useProbability && probability < 100) {
+            const rollValue = Math.random() * 100; // Generate random value between 0-100
+            if (rollValue > probability) {
+                // Failed probability check, skip this entry
+                console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" failed probability check: ${rollValue.toFixed(2)} > ${probability}%`);
+                continue;
+            }
+            console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" passed probability check: ${rollValue.toFixed(2)} <= ${probability}%`);
+        }
+
+        // All checks passed, activate entry
+        activatedEntries.push(entry);
     }
 
     // Log scan depth usage if multiple depths were used

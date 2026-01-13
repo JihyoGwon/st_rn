@@ -336,6 +336,14 @@ export function formatWorldInfo(activatedEntries) {
 
 **예상 작업 시간**: 1-2시간
 
+**구현 완료**:
+- ✅ `checkWorldInfo` 함수에서 키워드 매칭 성공 후 확률 체크 추가
+- ✅ `useProbability`가 false거나 `probability`가 100이면 항상 활성화
+- ✅ 랜덤 확률 체크 로직 구현 (`Math.random() * 100` <= `probability`)
+- ✅ `getCharacterWorldInfo`와 `getGlobalLore`에서 `extensions.probability`, `extensions.useProbability` 필드 정규화
+- ✅ 확률 값 유효성 검사 및 클램핑 (0-100)
+- ✅ 확률 체크 성공/실패 로그 추가
+
 **Phase 3 총 예상 시간**: 5-8시간
 
 ### Phase 4: 그룹 및 Inclusion
