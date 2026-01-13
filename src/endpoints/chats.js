@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo, syncWorldInfoVectors } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1229,6 +1229,13 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 selectedWorldInfo,
                 characterStrategy
             );
+
+            // Synchronize World Info entries with vector index (if vector search is enabled)
+            if (extensionSettings && extensionSettings.vectors && extensionSettings.vectors.enabled_world_info && sortedEntries && sortedEntries.length > 0) {
+                // Run synchronization in the background, don't block the response
+                syncWorldInfoVectors(sortedEntries, extensionSettings.vectors, request.user.directories, request)
+                    .catch(error => console.error('[WI] Async vector synchronization failed:', error));
+            }
 
             if (sortedEntries && sortedEntries.length > 0) {
                 // Load chat history for keyword matching

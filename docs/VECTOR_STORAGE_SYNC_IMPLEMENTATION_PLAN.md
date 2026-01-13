@@ -204,8 +204,10 @@ export async function syncWorldInfoVectors(entries, vectorSettings, directories,
 
 ### Phase 3: 통합 및 트리거
 
-#### 3.1 `chats.js`에 동기화 호출 추가
+#### 3.1 `chats.js`에 동기화 호출 추가 ✅
 **목표**: `prepare-messages` 엔드포인트에서 벡터 동기화 실행
+
+**구현 완료**: `src/endpoints/chats.js`의 `prepare-messages` 엔드포인트에 추가됨
 
 **구현 위치**: `src/endpoints/chats.js`의 `prepare-messages` 엔드포인트
 
@@ -225,6 +227,8 @@ if (vectorSettings && vectorSettings.enabled_world_info && sortedEntries && sort
 
 **예상 작업 시간**: 1시간
 
+**구현 완료**: `getSortedEntries` 호출 직후에 비동기 동기화 호출 추가됨
+
 #### 3.2 동기화 상태 관리 (선택사항)
 **목표**: 동시에 여러 동기화 요청이 들어와도 하나만 실행
 
@@ -234,7 +238,7 @@ if (vectorSettings && vectorSettings.enabled_world_info && sortedEntries && sort
 
 **예상 작업 시간**: 1-2시간
 
-**Phase 3 총 예상 시간**: 2-3시간
+**Phase 3 총 예상 시간**: 2-3시간 ✅ 완료 (3.1만 구현, 3.2는 선택사항)
 
 ### Phase 4: 최적화 및 에러 처리
 
