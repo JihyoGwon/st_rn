@@ -7,7 +7,6 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAppSettingsStore } from '@/store/app-settings-store';
-import { DEFAULT_CHARACTER_PORT } from '@/constants/api';
 import type { Character } from '@/store/character-store';
 
 interface CharacterCardProps {
@@ -32,17 +31,15 @@ export const CharacterCard = ({ character, onPress }: CharacterCardProps) => {
     }
   };
 
-  // 아바타 이미지 URL (서버 URL + 캐릭터 파일명)
-  // 서버 URL이 없으면 기본 이미지만 표시
+  // 아바타 이미지 URL (웹과 동일한 thumbnail 엔드포인트 사용)
+  // 서버 URL이 없거나 avatar가 없으면 기본 이미지만 표시
   const getAvatarUrl = () => {
-    if (!settings.serverUrl) {
+    if (!settings.serverUrl || !character.avatar || character.avatar === 'none') {
       return null; // 기본 이미지 사용
     }
-    // 서버 URL에서 포트를 character 포트로 변경
     try {
       const url = new URL(settings.serverUrl);
-      url.port = DEFAULT_CHARACTER_PORT.toString();
-      return `${url.origin}/characters/${character.avatar}`;
+      return `${url.origin}/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`;
     } catch {
       return null; // URL 파싱 실패 시 기본 이미지 사용
     }

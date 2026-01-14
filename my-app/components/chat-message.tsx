@@ -8,7 +8,6 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { formatChatTime } from '@/utils/date-format';
 import { useCharacterStore } from '@/store/character-store';
 import { useAppSettingsStore } from '@/store/app-settings-store';
-import { DEFAULT_CHARACTER_PORT } from '@/constants/api';
 import type { ChatMessage } from '@/store/chat-store';
 
 interface ChatMessageProps {
@@ -27,17 +26,14 @@ export const ChatMessageComponent = ({ message }: ChatMessageProps) => {
     : botBackgroundColor;
   const textColor = isUser ? '#fff' : Colors[colorScheme ?? 'light'].text;
 
-  // 봇 메시지의 경우 아바타 URL 생성
+  // 봇 메시지의 경우 아바타 URL 생성 (웹과 동일한 thumbnail 엔드포인트 사용)
   const getAvatarUrl = () => {
-    if (isUser || !selectedCharacter || !settings.serverUrl) {
+    if (isUser || !selectedCharacter || !settings.serverUrl || !selectedCharacter.avatar || selectedCharacter.avatar === 'none') {
       return null;
     }
     try {
       const url = new URL(settings.serverUrl);
-      const protocol = url.protocol;
-      const hostname = url.hostname;
-      const port = DEFAULT_CHARACTER_PORT;
-      return `${protocol}//${hostname}:${port}/characters/${selectedCharacter.avatar}`;
+      return `${url.origin}/thumbnail?type=avatar&file=${encodeURIComponent(selectedCharacter.avatar)}`;
     } catch {
       return null;
     }

@@ -320,7 +320,7 @@ GET /api/chats/recent
   - [x] Gemini 추론 기능 (reasoning_effort, include_reasoning) ✅
 - [ ] 확장 프롬프트 적용:
   - [x] Summary (1_memory)
-  - [ ] Authors Note (2_floating_prompt)
+  - [ ] Authors Note (2_floating_prompt) (일단 제외. 사용자가 채팅 경험을 커스터마이징하는 도구에 가까움)
   - [ ] 벡터 메모리 (3_vectors)
   - [ ] Data Bank 벡터 (4_vectors_data_bank)
   - [ ] Smart Context/ChromaDB (chromadb)
