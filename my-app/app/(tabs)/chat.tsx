@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator, Alert, TouchableOpacity, Modal } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { ThemedView } from '@/components/themed-view';
@@ -38,6 +38,7 @@ export default function ChatScreen() {
   const flashListRef = useRef<FlashList<any>>(null);
   const textColor = useThemeColor({}, 'text');
   const iconColor = useThemeColor({}, 'tint');
+  const insets = useSafeAreaInsets();
 
   // 화면 진입 시 설정 확인 및 채팅 히스토리 로드
   useEffect(() => {
@@ -157,53 +158,53 @@ export default function ChatScreen() {
 
         <KeyboardAvoidingView
           style={styles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-        {/* 메시지 리스트 */}
-        <View style={styles.listContainer}>
-          <FlashList
-            ref={flashListRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <ChatMessageComponent message={item} />}
-            contentContainerStyle={styles.messagesContainer}
-            estimatedItemSize={80}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                {isLoading ? (
-                  <>
-                    <ActivityIndicator size="large" />
-                    <ThemedText style={styles.emptyText}>채팅을 불러오는 중...</ThemedText>
-                  </>
-                ) : error ? (
-                  <ThemedText style={styles.errorText}>{error}</ThemedText>
-                ) : (
-                  <ThemedText style={styles.emptyText}>메시지를 입력해주세요</ThemedText>
-                )}
-              </View>
-            }
-          />
-        </View>
+          {/* 메시지 리스트 */}
+          <View style={styles.listContainer}>
+            <FlashList
+              ref={flashListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => <ChatMessageComponent message={item} />}
+              contentContainerStyle={styles.messagesContainer}
+              estimatedItemSize={80}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  {isLoading ? (
+                    <>
+                      <ActivityIndicator size="large" />
+                      <ThemedText style={styles.emptyText}>채팅을 불러오는 중...</ThemedText>
+                    </>
+                  ) : error ? (
+                    <ThemedText style={styles.errorText}>{error}</ThemedText>
+                  ) : (
+                    <ThemedText style={styles.emptyText}>메시지를 입력해주세요</ThemedText>
+                  )}
+                </View>
+              }
+            />
+          </View>
 
-        {/* 입력 영역 */}
-        <View style={styles.inputContainer}>
-          <Input
-            style={styles.input}
-            placeholder="메시지를 입력하세요..."
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            onSubmitEditing={handleSend}
-            returnKeyType="send"
-          />
-          <Button
-            title={isSending ? "전송 중..." : "전송"}
-            onPress={handleSend}
-            style={styles.sendButton}
-            disabled={inputText.trim() === '' || isSending || !selectedCharacter}
-          />
-        </View>
+          {/* 입력 영역 */}
+          <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <Input
+              style={styles.input}
+              placeholder="메시지를 입력하세요..."
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              onSubmitEditing={handleSend}
+              returnKeyType="send"
+            />
+            <Button
+              title={isSending ? "전송 중..." : "전송"}
+              onPress={handleSend}
+              style={styles.sendButton}
+              disabled={inputText.trim() === '' || isSending || !selectedCharacter}
+            />
+          </View>
         </KeyboardAvoidingView>
       </ThemedView>
 
@@ -307,6 +308,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     flex: 1,
+    minHeight: 0,
   },
   messagesContainer: {
     paddingVertical: 16,
