@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo, syncWorldInfoVectors } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo, syncWorldInfoVectors, filterByInclusionGroups } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1177,6 +1177,7 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         let worldInfoBefore = '';
         let worldInfoAfter = '';
         let depthEntries = []; // World Info entries to insert at specific depths in chat history
+        let globalUseGroupScoring = false; // Global group scoring setting
         try {
             // Get World Info settings from user settings
             let selectedWorldInfo = [];
@@ -1218,6 +1219,14 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                         globalScanDepth = Math.min(settings.world_info_depth, 1000); // Cap at 1000
                     } else if (settings.world_info_settings && typeof settings.world_info_settings.world_info_depth === 'number' && settings.world_info_settings.world_info_depth > 0) {
                         globalScanDepth = Math.min(settings.world_info_settings.world_info_depth, 1000);
+                    }
+                    
+                    // Get world_info_use_group_scoring (can be in root settings or world_info_settings)
+                    let globalUseGroupScoring = false;
+                    if (typeof settings.world_info_use_group_scoring === 'boolean') {
+                        globalUseGroupScoring = settings.world_info_use_group_scoring;
+                    } else if (settings.world_info_settings && typeof settings.world_info_settings.world_info_use_group_scoring === 'boolean') {
+                        globalUseGroupScoring = settings.world_info_settings.world_info_use_group_scoring;
                     }
                 }
             }
@@ -1324,8 +1333,31 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 }
 
                 // Merge keyword and vector search results
-                const activatedEntries = [...(keywordActivatedEntries || []), ...vectorActivatedEntries];
+                let activatedEntries = [...(keywordActivatedEntries || []), ...vectorActivatedEntries];
                 console.log(`[WI] Total activated entries: ${activatedEntries.length} (${keywordActivatedEntries?.length || 0} keyword + ${vectorActivatedEntries.length} vector)`);
+
+                // Apply Inclusion Group filtering if there are activated entries
+                if (activatedEntries && activatedEntries.length > 0) {
+                    // Get chat text for group scoring (if enabled)
+                    // Use the same chat history that was used for keyword matching
+                    const chatTextForScoring = chatHistoryForWI && chatHistoryForWI.length > 0
+                        ? chatHistoryForWI
+                            .slice(-globalScanDepth)
+                            .filter(item => item && item.mes && typeof item.mes === 'string' && !item.is_system)
+                            .map(item => item.mes.trim())
+                            .filter(text => text.length > 0)
+                            .join('\n')
+                        : '';
+                    
+                    // Filter by inclusion groups
+                    activatedEntries = filterByInclusionGroups(
+                        activatedEntries,
+                        chatTextForScoring,
+                        globalUseGroupScoring,
+                        globalCaseSensitive,
+                        globalMatchWholeWords
+                    );
+                }
 
                 if (activatedEntries && activatedEntries.length > 0) {
                     // Format activated entries by position (Before/After/ANTop/ANBottom/atDepth/Outlet)

@@ -46,7 +46,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('최근 채팅 로드 실패:', error);
       // 에러가 발생해도 채팅 화면으로 이동 (기본 채팅 사용)
-      router.push('/chat');
+    router.push('/chat');
     }
   };
 

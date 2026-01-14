@@ -346,9 +346,9 @@ export function formatWorldInfo(activatedEntries) {
 
 **Phase 3 총 예상 시간**: 5-8시간
 
-### Phase 4: 그룹 및 Inclusion
+### Phase 4: 그룹 및 Inclusion ✅
 
-#### 4.1 Inclusion Group 구현
+#### 4.1 Inclusion Group 구현 ✅
 **목표**: Inclusion Group 필터링 로직
 
 **구현 내용**:
@@ -356,15 +356,30 @@ export function formatWorldInfo(activatedEntries) {
 - 그룹 스코어링 로직
 - 그룹 오버라이드 및 가중치 처리
 
+**구현 완료**:
+- ✅ `filterByInclusionGroups` 함수 추가: 그룹별 엔트리 필터링 및 선택 로직 구현
+- ✅ `filterGroupsByScoring` 함수 추가: Group Scoring으로 낮은 점수 엔트리 제거
+- ✅ `getEntryScore` 함수 추가: 엔트리 매칭 점수 계산 (Primary + Secondary 키워드 기반)
+- ✅ Group Override (Prioritize) 로직 구현: `groupOverride`가 true인 엔트리 우선 선택
+- ✅ Group Weight 기반 랜덤 선택 구현: 가중치 기반 확률적 선택
+- ✅ `chats.js`에 Inclusion Group 필터링 통합: 활성화된 엔트리에 필터링 적용
+- ✅ 엔트리 정규화: `group`, `groupWeight`, `groupOverride`, `useGroupScoring` 필드 추출
+
 **예상 작업 시간**: 4-5시간
 
-#### 4.2 그룹 스코어링 구현
+#### 4.2 그룹 스코어링 구현 ✅
 **목표**: Group Scoring 로직 구현
 
 **구현 내용**:
 - 전역 설정: `world_info_use_group_scoring`
 - 엔트리별 오버라이드: `useGroupScoring`
 - 그룹 가중치 기반 선택
+
+**구현 완료**:
+- ✅ 전역 설정 로드: `world_info_use_group_scoring` 설정 로드 (root 또는 `world_info_settings` 내부)
+- ✅ 엔트리별 `useGroupScoring` 필드 정규화 및 처리
+- ✅ Group Scoring 로직: 점수가 낮은 엔트리 제거, 최대 점수 엔트리만 유지
+- ✅ 점수 계산: Primary와 Secondary 키워드 매칭 횟수 기반 점수 계산
 
 **예상 작업 시간**: 2-3시간
 

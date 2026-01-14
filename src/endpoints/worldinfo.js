@@ -104,7 +104,7 @@ export function getCharacterWorldInfo(directories, characterData) {
             world: worldInfoName,
         };
         
-        // Extract caseSensitive, matchWholeWords, scanDepth, probability, and useProbability from extensions if they exist
+        // Extract caseSensitive, matchWholeWords, scanDepth, probability, useProbability, and group-related fields from extensions if they exist
         if (entry.extensions) {
             if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
                 normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
@@ -120,6 +120,19 @@ export function getCharacterWorldInfo(directories, characterData) {
             }
             if (entry.extensions.useProbability !== undefined && normalizedEntry.useProbability === undefined) {
                 normalizedEntry.useProbability = entry.extensions.useProbability;
+            }
+            // Inclusion Group fields
+            if (entry.extensions.group !== undefined && normalizedEntry.group === undefined) {
+                normalizedEntry.group = entry.extensions.group;
+            }
+            if (entry.extensions.group_weight !== undefined && normalizedEntry.groupWeight === undefined) {
+                normalizedEntry.groupWeight = entry.extensions.group_weight;
+            }
+            if (entry.extensions.group_override !== undefined && normalizedEntry.groupOverride === undefined) {
+                normalizedEntry.groupOverride = entry.extensions.group_override;
+            }
+            if (entry.extensions.use_group_scoring !== undefined && normalizedEntry.useGroupScoring === undefined) {
+                normalizedEntry.useGroupScoring = entry.extensions.use_group_scoring;
             }
         }
         
@@ -165,7 +178,7 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                     world: worldName,
                 };
                 
-                // Extract caseSensitive, matchWholeWords, scanDepth, probability, and useProbability from extensions if they exist
+                // Extract caseSensitive, matchWholeWords, scanDepth, probability, useProbability, and group-related fields from extensions if they exist
                 if (entry.extensions) {
                     if (entry.extensions.case_sensitive !== undefined && normalizedEntry.caseSensitive === undefined) {
                         normalizedEntry.caseSensitive = entry.extensions.case_sensitive;
@@ -181,6 +194,19 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                     }
                     if (entry.extensions.useProbability !== undefined && normalizedEntry.useProbability === undefined) {
                         normalizedEntry.useProbability = entry.extensions.useProbability;
+                    }
+                    // Inclusion Group fields
+                    if (entry.extensions.group !== undefined && normalizedEntry.group === undefined) {
+                        normalizedEntry.group = entry.extensions.group;
+                    }
+                    if (entry.extensions.group_weight !== undefined && normalizedEntry.groupWeight === undefined) {
+                        normalizedEntry.groupWeight = entry.extensions.group_weight;
+                    }
+                    if (entry.extensions.group_override !== undefined && normalizedEntry.groupOverride === undefined) {
+                        normalizedEntry.groupOverride = entry.extensions.group_override;
+                    }
+                    if (entry.extensions.use_group_scoring !== undefined && normalizedEntry.useGroupScoring === undefined) {
+                        normalizedEntry.useGroupScoring = entry.extensions.use_group_scoring;
                     }
                 }
                 
@@ -282,6 +308,46 @@ function convertChatToText(chatHistory, scanDepth = 100) {
         .filter(text => text.length > 0);
 
     return textParts.join('\n');
+}
+
+/**
+ * Counts keyword occurrences in text with case sensitivity and whole word matching support
+ * @param {string} text Text to search in
+ * @param {string} keyword Keyword to search for
+ * @param {boolean} caseSensitive Whether to match case (default: false)
+ * @param {boolean} matchWholeWords Whether to match whole words only (default: false)
+ * @returns {number} Number of times keyword appears in text
+ */
+function countKeywordOccurrences(text, keyword, caseSensitive = false, matchWholeWords = false) {
+    if (!text || !keyword) {
+        return 0;
+    }
+
+    const searchText = caseSensitive ? text : text.toLowerCase();
+    const searchKeyword = caseSensitive ? keyword.trim() : keyword.trim().toLowerCase();
+
+    if (!searchKeyword) {
+        return 0;
+    }
+
+    // Whole word matching: use word boundary regex
+    if (matchWholeWords) {
+        // Escape special regex characters in keyword
+        const escapedKeyword = searchKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // Use word boundary (\b) to match whole words only
+        const regex = new RegExp(`\\b${escapedKeyword}\\b`, caseSensitive ? 'g' : 'gi');
+        const matches = searchText.match(regex);
+        return matches ? matches.length : 0;
+    }
+
+    // Simple substring matching: count occurrences
+    let count = 0;
+    let index = searchText.indexOf(searchKeyword);
+    while (index !== -1) {
+        count++;
+        index = searchText.indexOf(searchKeyword, index + 1);
+    }
+    return count;
 }
 
 /**
@@ -562,6 +628,282 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
     }
 
     return activatedEntries;
+}
+
+/**
+ * Default weight for group entries (compatible with client-side DEFAULT_WEIGHT)
+ */
+const DEFAULT_WEIGHT = 100;
+
+/**
+ * Calculates the match score for a World Info entry
+ * Score is based on the number of primary and secondary keywords matched
+ * Compatible with client-side WorldInfoBuffer.getScore method
+ * @param {object} entry World Info entry
+ * @param {string} chatText Chat text to search in
+ * @param {boolean} globalCaseSensitive Global case sensitivity setting
+ * @param {boolean} globalMatchWholeWords Global whole word matching setting
+ * @returns {number} Score (number of matched keywords)
+ */
+function getEntryScore(entry, chatText, globalCaseSensitive = false, globalMatchWholeWords = false) {
+    if (!entry || !chatText) {
+        return 0;
+    }
+
+    // Get entry-specific settings
+    const caseSensitive = entry.caseSensitive !== null && entry.caseSensitive !== undefined
+        ? entry.caseSensitive
+        : globalCaseSensitive;
+    const matchWholeWords = entry.matchWholeWords !== null && entry.matchWholeWords !== undefined
+        ? entry.matchWholeWords
+        : globalMatchWholeWords;
+
+    let numberOfPrimaryKeys = 0;
+    let numberOfSecondaryKeys = 0;
+    let primaryScore = 0;
+    let secondaryScore = 0;
+
+    // Count primary key matches (match existence, not frequency - matches web client behavior)
+    if (Array.isArray(entry.key)) {
+        numberOfPrimaryKeys = entry.key.length;
+        for (const key of entry.key) {
+            if (key && typeof key === 'string' && matchKeyword(chatText, key.trim(), caseSensitive, matchWholeWords)) {
+                primaryScore++;
+            }
+        }
+    }
+
+    // Count secondary key matches (match existence, not frequency - matches web client behavior)
+    if (Array.isArray(entry.keysecondary)) {
+        numberOfSecondaryKeys = entry.keysecondary.length;
+        for (const key of entry.keysecondary) {
+            if (key && typeof key === 'string' && matchKeyword(chatText, key.trim(), caseSensitive, matchWholeWords)) {
+                secondaryScore++;
+            }
+        }
+    }
+
+    // No keys == no score
+    if (!numberOfPrimaryKeys) {
+        return 0;
+    }
+
+    // Only positive logic influences the score
+    if (numberOfSecondaryKeys > 0) {
+        const selectiveLogic = entry.selectiveLogic ?? world_info_logic.AND_ANY;
+        switch (selectiveLogic) {
+            // AND_ANY: Add both scores
+            case world_info_logic.AND_ANY:
+                return primaryScore + secondaryScore;
+            // AND_ALL: Add both scores if all secondary keys are found, otherwise only primary score
+            case world_info_logic.AND_ALL:
+                return secondaryScore === numberOfSecondaryKeys ? primaryScore + secondaryScore : primaryScore;
+            // NOT_ANY and NOT_ALL don't contribute to score (they're exclusionary)
+            default:
+                return primaryScore;
+        }
+    }
+
+    return primaryScore;
+}
+
+/**
+ * Filters entries by inclusion groups
+ * Only one entry from each group will be selected based on scoring, weight, or override
+ * @param {Array<object>} activatedEntries Array of activated entries
+ * @param {string} chatText Chat text for scoring (if group scoring is enabled)
+ * @param {boolean} globalUseGroupScoring Global group scoring setting
+ * @param {boolean} globalCaseSensitive Global case sensitivity setting
+ * @param {boolean} globalMatchWholeWords Global whole word matching setting
+ * @returns {Array<object>} Filtered entries (one per group)
+ */
+export function filterByInclusionGroups(
+    activatedEntries,
+    chatText = '',
+    globalUseGroupScoring = false,
+    globalCaseSensitive = false,
+    globalMatchWholeWords = false
+) {
+    if (!activatedEntries || activatedEntries.length === 0) {
+        return activatedEntries || [];
+    }
+
+    console.log('[WI] --- INCLUSION GROUP CHECKS ---');
+    console.log(`[WI] Checking ${activatedEntries.length} activated entries for inclusion groups`);
+
+    // Group entries by inclusion group name
+    const grouped = {};
+    const ungroupedEntries = [];
+
+    for (const entry of activatedEntries) {
+        // Debug: log entry group field
+        console.log(`[WI] Entry ${entry.uid} (key: ${entry.key?.[0] || 'unknown'}): group="${entry.group}", useGroupScoring=${entry.useGroupScoring}`);
+        
+        if (!entry.group || typeof entry.group !== 'string' || entry.group.trim().length === 0) {
+            // Entry doesn't belong to any group, keep it
+            ungroupedEntries.push(entry);
+            continue;
+        }
+
+        // Split by comma to support multiple groups
+        const groups = entry.group.split(/,\s*/).filter(g => g.trim().length > 0);
+        for (const groupName of groups) {
+            if (!grouped[groupName]) {
+                grouped[groupName] = [];
+            }
+            grouped[groupName].push(entry);
+        }
+    }
+
+    if (Object.keys(grouped).length === 0) {
+        console.log('[WI] No inclusion groups found');
+        return activatedEntries;
+    }
+
+    console.log(`[WI] Found ${Object.keys(grouped).length} inclusion group(s)`);
+
+    // Process each group
+    const filteredEntries = [...ungroupedEntries];
+
+    for (const [groupName, groupEntries] of Object.entries(grouped)) {
+        if (!Array.isArray(groupEntries) || groupEntries.length <= 1) {
+            // Only one entry in group, keep it
+            filteredEntries.push(...groupEntries);
+            continue;
+        }
+
+        console.log(`[WI] Processing inclusion group '${groupName}' with ${groupEntries.length} entries`);
+
+        // Step 1: Apply group scoring if enabled
+        let remainingEntries = filterGroupsByScoring(
+            groupEntries,
+            chatText,
+            globalUseGroupScoring,
+            globalCaseSensitive,
+            globalMatchWholeWords
+        );
+
+        if (remainingEntries.length === 0) {
+            console.warn(`[WI] All entries removed from group '${groupName}' by scoring`);
+            continue;
+        }
+
+        if (remainingEntries.length === 1) {
+            // Only one entry left after scoring
+            filteredEntries.push(remainingEntries[0]);
+            continue;
+        }
+
+        // Step 2: Check for group override (prioritize)
+        const prioritizedEntries = remainingEntries.filter(e => e.groupOverride === true);
+        if (prioritizedEntries.length > 0) {
+            // If multiple prioritized entries, choose by order (highest order wins)
+            const winner = prioritizedEntries.reduce((a, b) => {
+                const orderA = a.order ?? 100;
+                const orderB = b.order ?? 100;
+                return orderB > orderA ? b : a;
+            });
+            console.log(`[WI] Entry ${winner.uid} activated as priority winner from inclusion group '${groupName}'`);
+            filteredEntries.push(winner);
+            continue;
+        }
+
+        // Step 3: Weighted random selection
+        const totalWeight = remainingEntries.reduce((acc, item) => {
+            const weight = item.groupWeight ?? DEFAULT_WEIGHT;
+            return acc + (typeof weight === 'number' && weight > 0 ? weight : DEFAULT_WEIGHT);
+        }, 0);
+
+        if (totalWeight <= 0) {
+            console.warn(`[WI] Invalid total weight for group '${groupName}', using first entry`);
+            filteredEntries.push(remainingEntries[0]);
+            continue;
+        }
+
+        const rollValue = Math.random() * totalWeight;
+        let currentWeight = 0;
+        let winner = null;
+
+        for (const entry of remainingEntries) {
+            const weight = entry.groupWeight ?? DEFAULT_WEIGHT;
+            const entryWeight = typeof weight === 'number' && weight > 0 ? weight : DEFAULT_WEIGHT;
+            currentWeight += entryWeight;
+
+            if (rollValue <= currentWeight) {
+                console.log(`[WI] Entry ${entry.uid} activated as roll winner from inclusion group '${groupName}' (weight: ${entryWeight}/${totalWeight})`);
+                winner = entry;
+                break;
+            }
+        }
+
+        if (!winner) {
+            // Fallback: use last entry
+            console.warn(`[WI] Failed to select winner from group '${groupName}', using last entry`);
+            winner = remainingEntries[remainingEntries.length - 1];
+        }
+
+        filteredEntries.push(winner);
+    }
+
+    console.log(`[WI] Inclusion group filtering completed: ${activatedEntries.length} -> ${filteredEntries.length} entries`);
+
+    return filteredEntries;
+}
+
+/**
+ * Filters entries by group scoring
+ * Removes entries with lower scores if group scoring is enabled
+ * @param {Array<object>} groupEntries Entries in the same group
+ * @param {string} chatText Chat text for scoring
+ * @param {boolean} globalUseGroupScoring Global group scoring setting
+ * @param {boolean} globalCaseSensitive Global case sensitivity setting
+ * @param {boolean} globalMatchWholeWords Global whole word matching setting
+ * @returns {Array<object>} Filtered entries (only highest scoring entries remain)
+ */
+function filterGroupsByScoring(
+    groupEntries,
+    chatText,
+    globalUseGroupScoring = false,
+    globalCaseSensitive = false,
+    globalMatchWholeWords = false
+) {
+    // Check if group scoring is enabled for this group
+    const hasGroupScoring = globalUseGroupScoring || groupEntries.some(e => e.useGroupScoring === true);
+    
+    if (!hasGroupScoring) {
+        console.debug(`[WI] Group scoring disabled for group, keeping all entries`);
+        return groupEntries;
+    }
+
+    // Calculate scores for all entries
+    const scores = groupEntries.map(entry => 
+        getEntryScore(entry, chatText, globalCaseSensitive, globalMatchWholeWords)
+    );
+    const maxScore = Math.max(...scores);
+
+    console.log(`[WI] Group scoring: max score = ${maxScore}`);
+    for (let i = 0; i < groupEntries.length; i++) {
+        console.log(`[WI]   Entry ${groupEntries[i].uid} (${groupEntries[i].key?.[0] || 'unknown'}): score = ${scores[i]}`);
+    }
+
+    // Filter out entries with lower scores (only if they have group scoring enabled)
+    const filteredEntries = [];
+    for (let i = 0; i < groupEntries.length; i++) {
+        const entry = groupEntries[i];
+        const isScored = entry.useGroupScoring ?? globalUseGroupScoring;
+
+        if (!isScored) {
+            // Entry doesn't use group scoring, keep it
+            filteredEntries.push(entry);
+        } else if (scores[i] >= maxScore) {
+            // Entry has max score, keep it
+            filteredEntries.push(entry);
+        } else {
+            console.debug(`[WI] Entry ${entry.uid} removed as score loser (score: ${scores[i]} < max: ${maxScore})`);
+        }
+    }
+
+    return filteredEntries;
 }
 
 /**
