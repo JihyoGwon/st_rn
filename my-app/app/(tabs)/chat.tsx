@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { StyleSheet, KeyboardAvoidingView, Platform, View, ActivityIndicator, Alert, TouchableOpacity, Modal } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
@@ -11,10 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ChatMessageComponent } from '@/components/chat-message';
 import { ChatListModal } from '@/components/chat-list-modal';
-import { useChatStore } from '@/store/chat-store';
+import { useChatStore, type ChatMessage } from '@/store/chat-store';
 import { useCharacterStore } from '@/store/character-store';
 import { useAppSettingsStore } from '@/store/app-settings-store';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { formatDateSeparator, isSameDate } from '@/utils/date-format';
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -39,6 +40,25 @@ export default function ChatScreen() {
   const textColor = useThemeColor({}, 'text');
   const iconColor = useThemeColor({}, 'tint');
   const insets = useSafeAreaInsets();
+
+  // 날짜 구분선이 포함된 메시지 리스트 생성
+  const messagesWithDateSeparators = useMemo(() => {
+    const result: Array<ChatMessage | { type: 'date-separator'; timestamp: number; id: string }> = [];
+    
+    messages.forEach((message, index) => {
+      // 첫 번째 메시지이거나 이전 메시지와 날짜가 다르면 날짜 구분선 추가
+      if (index === 0 || !isSameDate(message.timestamp, messages[index - 1].timestamp)) {
+        result.push({
+          type: 'date-separator',
+          timestamp: message.timestamp,
+          id: `date-separator-${message.timestamp}`,
+        });
+      }
+      result.push(message);
+    });
+    
+    return result;
+  }, [messages]);
 
   // 화면 진입 시 설정 확인 및 채팅 히스토리 로드
   useEffect(() => {
@@ -165,9 +185,22 @@ export default function ChatScreen() {
           <View style={styles.listContainer}>
             <FlashList
               ref={flashListRef}
-              data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <ChatMessageComponent message={item} />}
+              data={messagesWithDateSeparators}
+              keyExtractor={(item) => 'type' in item && item.type === 'date-separator' ? item.id : item.id}
+              renderItem={({ item }) => {
+                if ('type' in item && item.type === 'date-separator') {
+                  return (
+                    <View style={styles.dateSeparatorContainer}>
+                      <View style={styles.dateSeparatorLine} />
+                      <ThemedText style={styles.dateSeparatorText}>
+                        {formatDateSeparator(item.timestamp)}
+                      </ThemedText>
+                      <View style={styles.dateSeparatorLine} />
+                    </View>
+                  );
+                }
+                return <ChatMessageComponent message={item as ChatMessage} />;
+              }}
               contentContainerStyle={styles.messagesContainer}
               estimatedItemSize={80}
               ListEmptyComponent={
@@ -312,6 +345,22 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     paddingVertical: 16,
+  },
+  dateSeparatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+    paddingHorizontal: 16,
+  },
+  dateSeparatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  dateSeparatorText: {
+    fontSize: 12,
+    opacity: 0.6,
+    paddingHorizontal: 12,
   },
   emptyContainer: {
     flex: 1,

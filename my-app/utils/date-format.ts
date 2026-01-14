@@ -57,3 +57,41 @@ export function formatChatTime(timestamp: string | number): string {
   return `${hours}:${minutes}`;
 }
 
+/**
+ * 날짜를 카카오톡 스타일로 표시 (예: "2025년 1월 13일 화요일")
+ */
+export function formatDateSeparator(timestamp: string | number): string {
+  const date = new Date(typeof timestamp === 'string' ? timestamp : timestamp);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  const diffTime = today.getTime() - messageDate.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  const weekdays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+  const weekday = weekdays[date.getDay()];
+  
+  if (diffDays === 0) {
+    return `오늘 ${weekday}`;
+  } else if (diffDays === 1) {
+    return `어제 ${weekday}`;
+  } else {
+    return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 ${weekday}`;
+  }
+}
+
+/**
+ * 두 타임스탬프가 같은 날짜인지 확인
+ */
+export function isSameDate(timestamp1: number, timestamp2: number): boolean {
+  const date1 = new Date(timestamp1);
+  const date2 = new Date(timestamp2);
+  
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
+
