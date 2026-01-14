@@ -315,7 +315,7 @@ GET /api/chats/recent
 - [x] 캐릭터 데이터 로드
 - [x] 채팅 히스토리 로드
 - [x] 시스템 프롬프트 조합 (기본 구현 완료)
-- [x] 월드 인포 적용 (worldInfoBefore, worldInfoAfter) - 기본 로드 완료, 채팅 스캔 로직은 TODO
+- [x] 월드 인포 적용 (worldInfoBefore, worldInfoAfter) - 키워드 스캔, 벡터 검색, 재귀 스캔, 그룹 필터링, 활성화 제어 등 대부분 구현 완료 ✅
 - [x] 모델 설정 적용:
   - [x] Gemini 추론 기능 (reasoning_effort, include_reasoning) ✅
 - [ ] 확장 프롬프트 적용:

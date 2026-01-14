@@ -48,8 +48,8 @@
 - [x] 엔트리별 대소문자 구분 (caseSensitive) - 엔트리별 오버라이드 ✅
 - [x] 전체 단어 매칭 (Whole Words) - 전역 설정 ✅
 - [x] 엔트리별 전체 단어 매칭 (matchWholeWords) - 엔트리별 오버라이드 ✅
-- [ ] 그룹 스코어링 (Group Scoring) - 전역 설정
-- [ ] 엔트리별 그룹 스코어링 (useGroupScoring) - 엔트리별 오버라이드
+- [x] 그룹 스코어링 (Group Scoring) - 전역 설정 ✅
+- [x] 엔트리별 그룹 스코어링 (useGroupScoring) - 엔트리별 오버라이드 ✅
 
 #### 2.2 엔트리 속성
 - [x] 우선순위 (Priority / Order) ✅
@@ -75,26 +75,26 @@
 - [ ] Creator Notes 매칭 (matchCreatorNotes)
 
 #### 2.4 그룹 및 Inclusion
-- [ ] Inclusion Group
-- [ ] 그룹 (Group)
-- [ ] 그룹 오버라이드 (Group Override)
-- [ ] 그룹 가중치 (Group Weight)
+- [x] Inclusion Group ✅
+- [x] 그룹 (Group) ✅
+- [x] 그룹 오버라이드 (Group Override) ✅
+- [x] 그룹 가중치 (Group Weight) ✅
 
 #### 2.5 활성화 제어
-- [ ] Constant (항상 활성화)
-- [ ] Vectorized (벡터 기반 검색) - 벡터 확장 기능과 연동
-- [ ] Sticky (지속 활성화) - 엔트리별 sticky 값
-- [ ] Cooldown (재사용 대기 시간) - 엔트리별 cooldown 값
-- [ ] Delay (지연 활성화) - 엔트리별 delay 값
-- [ ] Decorators (@@activate, @@dont_activate)
-- [ ] Disable (비활성화)
+- [x] Constant (항상 활성화) ✅
+- [x] Vectorized (벡터 기반 검색) - 벡터 확장 기능과 연동 ✅
+- [x] Sticky (지속 활성화) - 엔트리별 sticky 값 ✅
+- [x] Cooldown (재사용 대기 시간) - 엔트리별 cooldown 값 ✅
+- [x] Delay (지연 활성화) - 엔트리별 delay 값 ✅
+- [x] Decorators (@@activate, @@dont_activate) ✅
+- [x] Disable (비활성화) ✅
 
 #### 2.6 재귀 및 예산
-- [ ] 재귀 스캔 (Recursion) - 전역 설정
-- [ ] 재귀 제외 (Exclude Recursion)
-- [ ] 재귀 방지 (Prevent Recursion)
-- [ ] 재귀 지연 (Delay Until Recursion)
-- [ ] 최대 재귀 단계 (Max Recursion Steps)
+- [x] 재귀 스캔 (Recursion) - 전역 설정 ✅
+- [x] 재귀 제외 (Exclude Recursion) ✅
+- [x] 재귀 방지 (Prevent Recursion) ✅
+- [x] 재귀 지연 (Delay Until Recursion) ✅
+- [x] 최대 재귀 단계 (Max Recursion Steps) ✅
 - [ ] 최소 활성화 수 (Min Activations)
 - [ ] 최소 활성화 깊이 최대값 (Min Activations Depth Max)
 - [ ] 토큰 예산 관리 (Budget %) - 전역 설정
@@ -103,7 +103,7 @@
 
 #### 2.7 출력 타입
 - [x] worldInfoBefore / worldInfoAfter 분리 ✅
-- [ ] Example Messages (EMEntries)
+- [ ] Example Messages (EMEntries) - 수집 미구현 (현재 Before로 처리)
 - [x] Depth Entries (WIDepthEntries) - atDepth 위치 엔트리 프롬프트 삽입 구현됨 ✅
 - [x] Authors Note Before (ANBeforeEntries) - ANTop 엔트리 수집됨 (프롬프트 삽입은 향후 구현 예정) ✅
 - [x] Authors Note After (ANAfterEntries) - ANBottom 엔트리 수집됨 (프롬프트 삽입은 향후 구현 예정) ✅

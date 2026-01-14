@@ -23,21 +23,25 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] **Phase 1.4**: 월드인포 프롬프트 생성 (`formatWorldInfo`) ✅
 - [x] **Phase 2.1**: 보조 키워드 (Secondary Keywords) 구현 ✅
 - [x] **Phase 2.2**: 키워드 로직 구현 (AND ANY, AND ALL, NOT ANY, NOT ALL) ✅
-- [x] **Phase 2.3**: 위치 분리 개선 (10개 옵션 중 2개 완전 구현, 5개 수집 완료, 2개 미구현) ✅
+- [x] **Phase 2.3**: 위치 분리 개선 (10개 옵션 중 5개 완전 구현, 3개 수집 완료, 2개 미구현) ✅
+- [x] **Phase 4.1**: Inclusion Group 구현 ✅
+- [x] **Phase 4.2**: 그룹 스코어링 구현 ✅
 - [x] **Phase 5.1**: Constant 및 Disable 구현 ✅
 - [x] **Phase 5.2**: Sticky/Cooldown/Delay 구현 ✅
 - [x] **Phase 5.3**: Decorators 구현 (@@activate, @@dont_activate) ✅
+- [x] **Phase 6.1**: 재귀 스캔 구현 ✅
+- [x] **Phase 7.1**: 벡터 기반 검색 연동 ✅
 
 ### 위치별 구현 상태 요약
-- **완전 구현** (수집 + 삽입): Before, After, atDepth (3종) (5개)
+- **완전 구현** (수집 + 삽입): Before, After, atDepth (system/user/assistant) (5개)
 - **수집만 완료** (삽입 미구현): ANTop, ANBottom, Outlet (3개)
 - **미구현**: EMTop, EMBottom (2개)
 
 ### 미구현
-- [ ] 키워드 기반 필터링 (스캔 로직 미구현)
-- [ ] 엔트리 수집 로직 (Global, Character, Chat, Persona)
-- [ ] 키워드 매칭 로직
-- [ ] 활성화 제어 로직
+- [ ] Phase 6.2: 토큰 예산 관리
+- [ ] Phase 6.3: 최소 활성화 수 구현
+- [ ] Phase 7.2: 출력 타입 구현 (EMTop, EMBottom, ANTop/ANBottom 삽입, Outlet 삽입)
+- [ ] Phase 7.3: 필터링 옵션 구현 (캐릭터/태그 필터링, 매칭 옵션)
 
 ## 🔍 기술적 분석
 
@@ -465,7 +469,7 @@ export function formatWorldInfo(activatedEntries) {
 
 ### Phase 7: 특수 기능
 
-#### 7.1 벡터 기반 검색 연동
+#### 7.1 벡터 기반 검색 연동 ✅
 **목표**: 벡터 확장 기능과 연동
 
 **구현 내용**:
