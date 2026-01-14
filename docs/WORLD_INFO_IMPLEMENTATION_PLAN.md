@@ -26,6 +26,7 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] **Phase 2.3**: 위치 분리 개선 (10개 옵션 중 2개 완전 구현, 5개 수집 완료, 2개 미구현) ✅
 - [x] **Phase 5.1**: Constant 및 Disable 구현 ✅
 - [x] **Phase 5.2**: Sticky/Cooldown/Delay 구현 ✅
+- [x] **Phase 5.3**: Decorators 구현 (@@activate, @@dont_activate) ✅
 
 ### 위치별 구현 상태 요약
 - **완전 구현** (수집 + 삽입): Before, After, atDepth (3종) (5개)
@@ -411,13 +412,14 @@ export function formatWorldInfo(activatedEntries) {
 
 **예상 작업 시간**: 4-5시간
 
-#### 5.3 Decorators 구현
+#### 5.3 Decorators 구현 ✅
 **목표**: @@activate, @@dont_activate 데코레이터 지원
 
 **구현 내용**:
-- 엔트리 내용에서 decorator 파싱
-- @@activate: 강제 활성화
-- @@dont_activate: 강제 비활성화
+- ✅ 엔트리 내용에서 decorator 파싱 (`parseDecorators` 함수)
+- ✅ @@activate: 강제 활성화 (키워드 체크 전에 처리)
+- ✅ @@dont_activate: 강제 비활성화 (키워드 체크 후에 처리)
+- ✅ 엔트리 로드 시 decorator 파싱 및 content 정리 (`getCharacterWorldInfo`, `getGlobalLore`)
 
 **예상 작업 시간**: 1-2시간
 

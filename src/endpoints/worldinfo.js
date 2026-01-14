@@ -36,6 +36,11 @@ function getStringHash(str, seed = 0) {
 }
 
 /**
+ * Known decorators for World Info entries
+ */
+const KNOWN_DECORATORS = ['@@activate', '@@dont_activate'];
+
+/**
  * Gets a unique key for a World Info entry (used for timed effects)
  * @param {object} entry World Info entry
  * @returns {string} Entry key in format "world.uid"
@@ -44,6 +49,72 @@ function getEntryKey(entry) {
     const world = entry.world || '';
     const uid = entry.uid || 0;
     return `${world}.${uid}`;
+}
+
+/**
+ * Parse decorators from worldinfo content
+ * @param {string} content The content to parse
+ * @returns {[string[], string]} The decorators found in the content and the content without decorators
+ */
+function parseDecorators(content) {
+    if (!content || typeof content !== 'string') {
+        return [[], ''];
+    }
+
+    /**
+     * Check if the decorator is known
+     * @param {string} data string to check
+     * @returns {boolean} true if the decorator is known
+     */
+    const isKnownDecorator = (data) => {
+        let checkData = data;
+        if (checkData.startsWith('@@@')) {
+            checkData = checkData.substring(1);
+        }
+
+        for (let i = 0; i < KNOWN_DECORATORS.length; i++) {
+            if (checkData.startsWith(KNOWN_DECORATORS[i])) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (content.startsWith('@@')) {
+        let newContent = content;
+        const splited = content.split('\n');
+        const decorators = [];
+        let fallbacked = false;
+
+        for (let i = 0; i < splited.length; i++) {
+            const line = splited[i].trim(); // Trim whitespace for comparison
+            if (line.startsWith('@@')) {
+                // Skip @@@ lines if not fallbacked (these are escaped decorators)
+                if (line.startsWith('@@@') && !fallbacked) {
+                    continue;
+                }
+
+                if (isKnownDecorator(line)) {
+                    // Remove @@@ prefix if present
+                    const decorator = line.startsWith('@@@') ? line.substring(1) : line;
+                    decorators.push(decorator);
+                    console.debug(`[WI] Found decorator: ${decorator}`);
+                    fallbacked = false;
+                } else {
+                    // Unknown decorator, fallback to treating as content
+                    console.debug(`[WI] Unknown decorator line, treating as content: ${line}`);
+                    fallbacked = true;
+                }
+            } else {
+                // First non-decorator line, rest is content
+                newContent = splited.slice(i).join('\n');
+                break;
+            }
+        }
+        return [decorators, newContent];
+    }
+
+    return [[], content];
 }
 
 /**
@@ -350,11 +421,23 @@ export function getCharacterWorldInfo(directories, characterData) {
         if (!Array.isArray(entry.keysecondary)) {
             entry.keysecondary = [];
         }
+        // Parse decorators from content
+        // World Info entries use 'content' field for the actual content, 'comment' is just a label/description
+        const originalContent = entry.content || entry.comment || '';
+        const [decorators, cleanedContent] = parseDecorators(originalContent);
+        
+        // Log decorator parsing (only when decorators are found)
+        if (decorators && decorators.length > 0) {
+            console.log(`[WI] Parsed decorators for entry ${uid}: ${decorators.join(', ')}`);
+        }
+        
         // Normalize extensions fields (caseSensitive, matchWholeWords can be in extensions or directly on entry)
         const normalizedEntry = {
             ...entry,
             uid: Number(uid) || entry.uid || 0,
             world: worldInfoName,
+            content: cleanedContent, // Use cleaned content without decorators
+            decorators: decorators || [], // Add decorators array
         };
         
         // Extract caseSensitive, matchWholeWords, scanDepth, probability, useProbability, and group-related fields from extensions if they exist
@@ -424,11 +507,23 @@ export function getGlobalLore(directories, selectedWorldInfo) {
                     entry.keysecondary = [];
                 }
                 
+                // Parse decorators from content
+                // World Info entries use 'content' field for the actual content, 'comment' is just a label/description
+                const originalContent = entry.content || entry.comment || '';
+                const [decorators, cleanedContent] = parseDecorators(originalContent);
+                
+                // Log decorator parsing (only when decorators are found)
+                if (decorators && decorators.length > 0) {
+                    console.log(`[WI] Parsed decorators for entry ${uid}: ${decorators.join(', ')}`);
+                }
+                
                 // Normalize extensions fields (caseSensitive, matchWholeWords can be in extensions or directly on entry)
                 const normalizedEntry = {
                     ...entry,
                     uid: Number(uid) || entry.uid || 0,
                     world: worldName,
+                    content: cleanedContent, // Use cleaned content without decorators
+                    decorators: decorators || [], // Add decorators array
                 };
                 
                 // Extract caseSensitive, matchWholeWords, scanDepth, probability, useProbability, and group-related fields from extensions if they exist
@@ -815,6 +910,13 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
             continue;
         }
 
+        // Check @@activate decorator (force activation, before keyword checks)
+        if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@activate')) {
+            console.log(`[WI] Entry ${entryKey} activated by @@activate decorator`);
+            activatedEntries.push(entry);
+            continue;
+        }
+
         // Skip entries in cooldown
         if (cooldownEntries.has(entryKey)) {
             console.debug(`[WI] Skipped entry ${entryKey}: in cooldown`);
@@ -913,8 +1015,13 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
             Array.isArray(entry.keysecondary) && 
             entry.keysecondary.length > 0;
 
-        // If no secondary keywords, activate immediately
+        // If no secondary keywords, check @@dont_activate before activating
         if (!hasSecondaryKeywords) {
+            // Check @@dont_activate decorator (force deactivation)
+            if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@dont_activate')) {
+                console.log(`[WI] Entry ${entryKey} suppressed by @@dont_activate decorator`);
+                continue;
+            }
             activatedEntries.push(entry);
             continue;
         }
@@ -951,6 +1058,12 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
                 continue;
             }
             console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" passed probability check: ${rollValue.toFixed(2)} <= ${probability}%`);
+        }
+
+        // Check @@dont_activate decorator (force deactivation, after all keyword checks)
+        if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@dont_activate')) {
+            console.log(`[WI] Entry ${entryKey} suppressed by @@dont_activate decorator`);
+            continue;
         }
 
         // All checks passed, activate entry
