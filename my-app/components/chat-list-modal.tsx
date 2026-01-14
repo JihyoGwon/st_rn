@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, Modal, TouchableOpacity, ActivityIndicator, Alert, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -150,13 +150,15 @@ export function ChatListModal({ visible, onClose, onSelectChat }: ChatListModalP
               <ThemedText style={styles.emptyText}>채팅이 없습니다</ThemedText>
             </ThemedView>
           ) : (
-            <FlashList
-              data={chatList}
-              renderItem={renderChatItem}
-              keyExtractor={(item) => item.file_name || `chat-${Math.random()}`}
-              estimatedItemSize={100}
-              contentContainerStyle={styles.listContent}
-            />
+            <View style={styles.listContainer}>
+              <FlashList
+                data={chatList}
+                renderItem={renderChatItem}
+                keyExtractor={(item) => item.file_name || `chat-${Math.random()}`}
+                estimatedItemSize={100}
+                contentContainerStyle={styles.listContent}
+              />
+            </View>
           )}
 
         </SafeAreaView>
@@ -214,6 +216,9 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     opacity: 0.5,
+  },
+  listContainer: {
+    flex: 1,
   },
   listContent: {
     paddingVertical: 8,
