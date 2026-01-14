@@ -24,6 +24,8 @@ SillyTavern의 월드인포 기능을 서버로 포팅하여 모바일 앱에서
 - [x] **Phase 2.1**: 보조 키워드 (Secondary Keywords) 구현 ✅
 - [x] **Phase 2.2**: 키워드 로직 구현 (AND ANY, AND ALL, NOT ANY, NOT ALL) ✅
 - [x] **Phase 2.3**: 위치 분리 개선 (10개 옵션 중 2개 완전 구현, 5개 수집 완료, 2개 미구현) ✅
+- [x] **Phase 5.1**: Constant 및 Disable 구현 ✅
+- [x] **Phase 5.2**: Sticky/Cooldown/Delay 구현 ✅
 
 ### 위치별 구현 상태 요약
 - **완전 구현** (수집 + 삽입): Before, After, atDepth (3종) (5개)
@@ -387,7 +389,7 @@ export function formatWorldInfo(activatedEntries) {
 
 ### Phase 5: 활성화 제어
 
-#### 5.1 Constant 및 Disable 구현
+#### 5.1 Constant 및 Disable 구현 ✅
 **목표**: 항상 활성화 및 비활성화 로직
 
 **구현 내용**:
@@ -396,14 +398,16 @@ export function formatWorldInfo(activatedEntries) {
 
 **예상 작업 시간**: 1시간
 
-#### 5.2 Sticky/Cooldown/Delay 구현
+#### 5.2 Sticky/Cooldown/Delay 구현 ✅
 **목표**: 시간 기반 활성화 제어
 
 **구현 내용**:
-- Sticky: 지속 활성화 (채팅 인덱스 기반)
-- Cooldown: 재사용 대기 시간
-- Delay: 지연 활성화
-- 채팅 메타데이터에 상태 저장
+- ✅ Sticky: 지속 활성화 (채팅 인덱스 기반)
+- ✅ Cooldown: 재사용 대기 시간
+- ✅ Delay: 지연 활성화
+- ✅ 채팅 메타데이터에 상태 저장
+- ✅ Sticky 종료 시 Cooldown 자동 시작
+- ✅ 새로운 타임드 이펙트 생성 및 저장
 
 **예상 작업 시간**: 4-5시간
 

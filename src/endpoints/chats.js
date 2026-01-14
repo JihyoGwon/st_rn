@@ -22,7 +22,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
-import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo, syncWorldInfoVectors, filterByInclusionGroups } from './worldinfo.js';
+import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo, syncWorldInfoVectors, filterByInclusionGroups, getTimedWorldInfo, checkTimedEffects, createNewTimedEffects } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
 const maxTotalChatBackups = Number(getConfigValue('backups.chat.maxTotalBackups', -1, 'number'));
@@ -1274,6 +1274,10 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                 }
                 console.log(`[WI] Total messages: ${chatHistoryForWI.length} (${chatHistory.length} from history + ${user_message && user_message.trim() ? 1 : 0} current), Global scan depth: ${globalScanDepth}`);
 
+                // Extract timed effects metadata from chat history
+                const timedWorldInfo = getTimedWorldInfo(chatHistory);
+                const currentChatLength = chatHistoryForWI.length;
+
                 // Separate vectorized and keyword-based entries
                 const keywordEntries = [];
                 const vectorizedEntries = [];
@@ -1300,13 +1304,30 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
 
                 console.log(`[WI] Found ${keywordEntries.length} keyword-based entries, ${vectorizedEntries.length} vectorized entries`);
 
-                // Check keyword-based entries against chat history
+                // Check timed effects (sticky, cooldown, delay) for all entries
+                const allEntries = [...keywordEntries, ...vectorizedEntries];
+                let timedEffectsResult = null;
+                if (allEntries.length > 0) {
+                    timedEffectsResult = checkTimedEffects(allEntries, timedWorldInfo, currentChatLength);
+                    console.log(`[WI] Timed effects: ${timedEffectsResult.sticky.length} sticky, ${timedEffectsResult.cooldown.length} cooldown, ${timedEffectsResult.delay.length} delay`);
+                } else {
+                    // No entries, create empty timed effects result
+                    timedEffectsResult = {
+                        sticky: [],
+                        cooldown: [],
+                        delay: [],
+                        timedWorldInfo: timedWorldInfo,
+                    };
+                }
+
+                // Check keyword-based entries against chat history (with timed effects)
                 const keywordActivatedEntries = checkWorldInfo(
                     keywordEntries, 
                     chatHistoryForWI, 
                     globalScanDepth,
                     globalCaseSensitive,
-                    globalMatchWholeWords
+                    globalMatchWholeWords,
+                    timedEffectsResult
                 );
                 console.log(`[WI] Activated ${keywordActivatedEntries ? keywordActivatedEntries.length : 0} keyword-based entries`);
 
@@ -1359,6 +1380,11 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     );
                 }
 
+                // Create new timed effects for activated entries
+                const finalTimedWorldInfo = activatedEntries && activatedEntries.length > 0 && timedEffectsResult
+                    ? createNewTimedEffects(activatedEntries, timedEffectsResult.timedWorldInfo, currentChatLength)
+                    : (timedEffectsResult ? timedEffectsResult.timedWorldInfo : timedWorldInfo);
+
                 if (activatedEntries && activatedEntries.length > 0) {
                     // Format activated entries by position (Before/After/ANTop/ANBottom/atDepth/Outlet)
                     const formattedWorldInfo = formatWorldInfo(activatedEntries);
@@ -1370,6 +1396,13 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     // TODO: Handle other positions (ANTop, ANBottom, Outlet) in future phases
                     // atDepth entries will be inserted into chat history after chat history is added
                 }
+
+                // Store updated timedWorldInfo in response metadata for client to save
+                // The client should save this in chat_metadata when saving the chat
+                if (!response.locals.worldInfoMetadata) {
+                    response.locals.worldInfoMetadata = {};
+                }
+                response.locals.worldInfoMetadata.timedWorldInfo = finalTimedWorldInfo;
             }
         } catch (error) {
             console.warn('[prepare-messages] Failed to load world info:', error);

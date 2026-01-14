@@ -36,6 +36,259 @@ function getStringHash(str, seed = 0) {
 }
 
 /**
+ * Gets a unique key for a World Info entry (used for timed effects)
+ * @param {object} entry World Info entry
+ * @returns {string} Entry key in format "world.uid"
+ */
+function getEntryKey(entry) {
+    const world = entry.world || '';
+    const uid = entry.uid || 0;
+    return `${world}.${uid}`;
+}
+
+/**
+ * Gets a hash for a World Info entry (used for timed effects)
+ * @param {object} entry World Info entry
+ * @returns {number} Entry hash
+ */
+function getEntryHash(entry) {
+    if (entry.hash !== undefined) {
+        return entry.hash;
+    }
+    // Calculate hash from content if not already set
+    const content = entry.content || '';
+    return getStringHash(content);
+}
+
+/**
+ * Extracts timedWorldInfo from chat metadata
+ * @param {Array} chatData Array of chat messages (first item may contain chat_metadata)
+ * @returns {object} timedWorldInfo object with sticky, cooldown, delay properties
+ */
+export function getTimedWorldInfo(chatData) {
+    if (!Array.isArray(chatData) || chatData.length === 0) {
+        return { sticky: {}, cooldown: {}, delay: {} };
+    }
+
+    // First line may contain chat_metadata
+    const firstLine = chatData[0];
+    if (firstLine && typeof firstLine === 'object' && firstLine.chat_metadata) {
+        const metadata = firstLine.chat_metadata;
+        if (metadata.timedWorldInfo && typeof metadata.timedWorldInfo === 'object') {
+            return {
+                sticky: metadata.timedWorldInfo.sticky || {},
+                cooldown: metadata.timedWorldInfo.cooldown || {},
+                delay: metadata.timedWorldInfo.delay || {},
+            };
+        }
+    }
+
+    return { sticky: {}, cooldown: {}, delay: {} };
+}
+
+/**
+ * Checks timed effects (sticky, cooldown, delay) for World Info entries
+ * @param {Array} entries Array of World Info entries
+ * @param {object} timedWorldInfo Timed effects metadata from chat
+ * @param {number} currentChatLength Current chat message count (including current message)
+ * @returns {object} Object with sticky, cooldown, delay arrays and updated timedWorldInfo
+ */
+export function checkTimedEffects(entries, timedWorldInfo, currentChatLength) {
+    const stickyBuffer = [];
+    const cooldownBuffer = [];
+    const delayBuffer = [];
+    const updatedTimedWorldInfo = {
+        sticky: { ...timedWorldInfo.sticky },
+        cooldown: { ...timedWorldInfo.cooldown },
+        delay: { ...timedWorldInfo.delay },
+    };
+
+    // Process sticky effects
+    for (const [key, effect] of Object.entries(updatedTimedWorldInfo.sticky)) {
+        if (!effect || typeof effect !== 'object') {
+            delete updatedTimedWorldInfo.sticky[key];
+            continue;
+        }
+
+        const entry = entries.find(e => {
+            const entryKey = getEntryKey(e);
+            const entryHash = getEntryHash(e);
+            return entryKey === key && String(entryHash) === String(effect.hash);
+        });
+
+        // Remove if chat hasn't advanced (unless protected)
+        if (currentChatLength <= Number(effect.start) && !effect.protected) {
+            console.log(`[WI] Removing sticky entry ${key} from timedWorldInfo: chat not advanced`);
+            delete updatedTimedWorldInfo.sticky[key];
+            continue;
+        }
+
+        // Remove if entry not found and interval passed
+        if (!entry) {
+            if (currentChatLength >= Number(effect.end)) {
+                console.log(`[WI] Removing sticky entry ${key} from timedWorldInfo: entry not found and interval passed`);
+                delete updatedTimedWorldInfo.sticky[key];
+            }
+            continue;
+        }
+
+        // Remove if entry no longer has sticky configured
+        if (!entry.sticky || typeof entry.sticky !== 'number' || entry.sticky <= 0) {
+            console.log(`[WI] Removing sticky entry ${key} from timedWorldInfo: entry not sticky`);
+            delete updatedTimedWorldInfo.sticky[key];
+            continue;
+        }
+
+        // Check if sticky has ended
+        if (currentChatLength >= Number(effect.end)) {
+            console.log(`[WI] Sticky ended for entry ${key}: interval passed (start=${effect.start}, end=${effect.end}, current=${currentChatLength})`);
+            delete updatedTimedWorldInfo.sticky[key];
+
+            // Auto-start cooldown if entry has cooldown configured
+            if (entry.cooldown && typeof entry.cooldown === 'number' && entry.cooldown > 0) {
+                const cooldownEffect = {
+                    hash: getEntryHash(entry),
+                    start: currentChatLength,
+                    end: currentChatLength + Number(entry.cooldown),
+                    protected: true,
+                };
+                const cooldownKey = getEntryKey(entry);
+                updatedTimedWorldInfo.cooldown[cooldownKey] = cooldownEffect;
+                console.log(`[WI] Adding cooldown entry ${cooldownKey} on ended sticky: start=${cooldownEffect.start}, end=${cooldownEffect.end}`);
+                // Add to cooldown buffer for this evaluation
+                cooldownBuffer.push(entry);
+            }
+            continue;
+        }
+
+        // Sticky is still active
+        stickyBuffer.push(entry);
+        console.log(`[WI] Timed effect "sticky" applied to entry ${key} (start=${effect.start}, end=${effect.end}, current=${currentChatLength})`);
+    }
+
+    // Process cooldown effects
+    for (const [key, effect] of Object.entries(updatedTimedWorldInfo.cooldown)) {
+        if (!effect || typeof effect !== 'object') {
+            delete updatedTimedWorldInfo.cooldown[key];
+            continue;
+        }
+
+        const entry = entries.find(e => {
+            const entryKey = getEntryKey(e);
+            const entryHash = getEntryHash(e);
+            return entryKey === key && String(entryHash) === String(effect.hash);
+        });
+
+        // Remove if chat hasn't advanced (unless protected)
+        if (currentChatLength <= Number(effect.start) && !effect.protected) {
+            console.log(`[WI] Removing cooldown entry ${key} from timedWorldInfo: chat not advanced`);
+            delete updatedTimedWorldInfo.cooldown[key];
+            continue;
+        }
+
+        // Remove if entry not found and interval passed
+        if (!entry) {
+            if (currentChatLength >= Number(effect.end)) {
+                console.log(`[WI] Removing cooldown entry ${key} from timedWorldInfo: entry not found and interval passed`);
+                delete updatedTimedWorldInfo.cooldown[key];
+            }
+            continue;
+        }
+
+        // Remove if entry no longer has cooldown configured
+        if (!entry.cooldown || typeof entry.cooldown !== 'number' || entry.cooldown <= 0) {
+            console.log(`[WI] Removing cooldown entry ${key} from timedWorldInfo: entry not cooldown`);
+            delete updatedTimedWorldInfo.cooldown[key];
+            continue;
+        }
+
+        // Check if cooldown has ended
+        if (currentChatLength >= Number(effect.end)) {
+            console.log(`[WI] Cooldown ended for entry ${key}: interval passed (start=${effect.start}, end=${effect.end}, current=${currentChatLength})`);
+            delete updatedTimedWorldInfo.cooldown[key];
+            continue;
+        }
+
+        // Cooldown is still active
+        cooldownBuffer.push(entry);
+        console.log(`[WI] Timed effect "cooldown" applied to entry ${key} (start=${effect.start}, end=${effect.end}, current=${currentChatLength})`);
+    }
+
+    // Process delay effects (delay is checked differently - it blocks entries from activating)
+    for (const entry of entries) {
+        if (!entry.delay || typeof entry.delay !== 'number' || entry.delay <= 0) {
+            continue;
+        }
+
+        if (currentChatLength < entry.delay) {
+            delayBuffer.push(entry);
+            console.log(`[WI] Timed effect "delay" applied to entry ${getEntryKey(entry)} (delay=${entry.delay}, current=${currentChatLength})`);
+        }
+    }
+
+    return {
+        sticky: stickyBuffer,
+        cooldown: cooldownBuffer,
+        delay: delayBuffer,
+        timedWorldInfo: updatedTimedWorldInfo,
+    };
+}
+
+/**
+ * Creates new timed effects for activated entries
+ * @param {Array} activatedEntries Array of activated World Info entries
+ * @param {object} timedWorldInfo Current timed effects metadata
+ * @param {number} currentChatLength Current chat message count (including current message)
+ * @returns {object} Updated timedWorldInfo with new sticky effects
+ */
+export function createNewTimedEffects(activatedEntries, timedWorldInfo, currentChatLength) {
+    const updatedTimedWorldInfo = {
+        sticky: { ...timedWorldInfo.sticky },
+        cooldown: { ...timedWorldInfo.cooldown },
+        delay: { ...timedWorldInfo.delay },
+    };
+
+    for (const entry of activatedEntries) {
+        // Create sticky effect if entry has sticky configured and doesn't already have one
+        if (entry.sticky && typeof entry.sticky === 'number' && entry.sticky > 0) {
+            const entryKey = getEntryKey(entry);
+            
+            // Only create new sticky if one doesn't already exist
+            if (!updatedTimedWorldInfo.sticky[entryKey]) {
+                const stickyEffect = {
+                    hash: getEntryHash(entry),
+                    start: currentChatLength,
+                    end: currentChatLength + Number(entry.sticky),
+                    protected: false,
+                };
+                updatedTimedWorldInfo.sticky[entryKey] = stickyEffect;
+                console.log(`[WI] Adding new sticky entry ${entryKey}: start=${stickyEffect.start}, end=${stickyEffect.end}`);
+            }
+        }
+
+        // Create cooldown effect if entry has cooldown configured and doesn't already have one
+        // Note: Cooldown is usually set when sticky ends, but can also be set directly
+        if (entry.cooldown && typeof entry.cooldown === 'number' && entry.cooldown > 0) {
+            const entryKey = getEntryKey(entry);
+            
+            // Only create new cooldown if one doesn't already exist
+            if (!updatedTimedWorldInfo.cooldown[entryKey]) {
+                const cooldownEffect = {
+                    hash: getEntryHash(entry),
+                    start: currentChatLength,
+                    end: currentChatLength + Number(entry.cooldown),
+                    protected: false,
+                };
+                updatedTimedWorldInfo.cooldown[entryKey] = cooldownEffect;
+                console.log(`[WI] Adding new cooldown entry ${entryKey}: start=${cooldownEffect.start}, end=${cooldownEffect.end}`);
+            }
+        }
+    }
+
+    return updatedTimedWorldInfo;
+}
+
+/**
  * Reads a World Info file and returns its contents
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string} worldInfoName Name of the World Info file
@@ -481,13 +734,35 @@ function getQueryTextForVectorSearch(chatHistory, queryMessageCount = 2) {
  * @param {boolean} globalMatchWholeWords Global whole word matching setting (default: false)
  * @returns {Array<object>} Array of activated entries
  */
-export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false) {
+/**
+ * @typedef {Object} TimedEffectsResult
+ * @property {Array} sticky Array of sticky entries
+ * @property {Array} cooldown Array of cooldown entries
+ * @property {Array} delay Array of delay entries
+ * @property {Object} timedWorldInfo Updated timed effects metadata
+ */
+
+/**
+ * Checks World Info entries against chat history and returns activated entries
+ * @param {Array} entries Array of World Info entries
+ * @param {Array} chatHistory Array of chat messages
+ * @param {number} globalScanDepth Maximum depth to scan
+ * @param {boolean} globalCaseSensitive Whether to match case
+ * @param {boolean} globalMatchWholeWords Whether to match whole words
+ * @param {TimedEffectsResult|null} timedEffectsResult Result from checkTimedEffects
+ * @returns {Array} Array of activated entries
+ */
+export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false, timedEffectsResult = null) {
     if (!entries || entries.length === 0) {
         return [];
     }
 
     if (!chatHistory || chatHistory.length === 0) {
-        // No chat history to search, return empty array
+        // No chat history to search, but check for sticky entries
+        if (timedEffectsResult && Array.isArray(timedEffectsResult.sticky) && timedEffectsResult.sticky.length > 0) {
+            console.log(`[WI] No chat history, but found ${timedEffectsResult.sticky.length} sticky entries`);
+            return [...timedEffectsResult.sticky];
+        }
         console.log(`[WI] No chat history to search`);
         return [];
     }
@@ -497,9 +772,63 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
     // Cache for converted chat texts by scan depth (to avoid redundant conversions)
     const chatTextCache = new Map();
 
+    // Get sets of entries affected by timed effects (for quick lookup)
+    const stickyEntries = new Set();
+    const cooldownEntries = new Set();
+    const delayEntries = new Set();
+    
+    if (timedEffectsResult && typeof timedEffectsResult === 'object') {
+        // Add sticky entries (always activated)
+        if (Array.isArray(timedEffectsResult.sticky)) {
+            for (const stickyEntry of timedEffectsResult.sticky) {
+                const entryKey = getEntryKey(stickyEntry);
+                stickyEntries.add(entryKey);
+                activatedEntries.push(stickyEntry);
+                console.log(`[WI] Entry ${entryKey} activated by sticky effect`);
+            }
+        }
+        
+        // Track cooldown entries (should be excluded)
+        if (Array.isArray(timedEffectsResult.cooldown)) {
+            for (const cooldownEntry of timedEffectsResult.cooldown) {
+                const entryKey = getEntryKey(cooldownEntry);
+                cooldownEntries.add(entryKey);
+                console.log(`[WI] Entry ${entryKey} blocked by cooldown effect`);
+            }
+        }
+        
+        // Track delay entries (should be excluded)
+        if (Array.isArray(timedEffectsResult.delay)) {
+            for (const delayEntry of timedEffectsResult.delay) {
+                const entryKey = getEntryKey(delayEntry);
+                delayEntries.add(entryKey);
+                console.log(`[WI] Entry ${entryKey} blocked by delay effect`);
+            }
+        }
+    }
+
     for (const entry of entries) {
+        const entryKey = getEntryKey(entry);
+        
         // Skip disabled entries
         if (entry.disable === true) {
+            continue;
+        }
+
+        // Skip entries in cooldown
+        if (cooldownEntries.has(entryKey)) {
+            console.debug(`[WI] Skipped entry ${entryKey}: in cooldown`);
+            continue;
+        }
+
+        // Skip entries in delay
+        if (delayEntries.has(entryKey)) {
+            console.debug(`[WI] Skipped entry ${entryKey}: in delay`);
+            continue;
+        }
+
+        // Skip entries already activated by sticky (already added above)
+        if (stickyEntries.has(entryKey)) {
             continue;
         }
 
