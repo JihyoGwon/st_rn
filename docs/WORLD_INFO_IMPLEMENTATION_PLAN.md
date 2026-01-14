@@ -427,14 +427,16 @@ export function formatWorldInfo(activatedEntries) {
 
 ### Phase 6: 재귀 및 예산
 
-#### 6.1 재귀 스캔 구현
+#### 6.1 재귀 스캔 구현 ✅
 **목표**: 재귀 스캔 로직 구현
 
 **구현 내용**:
-- 전역 설정: `world_info_recursive`
-- 재귀 제어: `excludeRecursion`, `preventRecursion`
-- 재귀 지연: `delayUntilRecursion`
-- 최대 재귀 단계: `maxRecursionSteps`
+- ✅ 전역 설정: `world_info_recursive`
+- ✅ 재귀 제어: `excludeRecursion`, `preventRecursion`
+- ✅ 재귀 지연: `delayUntilRecursion`
+- ✅ 최대 재귀 단계: `maxRecursionSteps`
+- ✅ 재귀 버퍼 관리: 활성화된 엔트리 콘텐츠를 재귀 버퍼에 추가하여 재스캔
+- ✅ 스캔 상태 관리: INITIAL, RECURSION 상태로 구분
 
 **예상 작업 시간**: 5-6시간
 

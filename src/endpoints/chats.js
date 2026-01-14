@@ -1178,6 +1178,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         let worldInfoAfter = '';
         let depthEntries = []; // World Info entries to insert at specific depths in chat history
         let globalUseGroupScoring = false; // Global group scoring setting
+        let worldInfoRecursive = false; // Recursive scanning enabled
+        let maxRecursionSteps = 0; // Maximum recursion steps (0 = unlimited)
         try {
             // Get World Info settings from user settings
             let selectedWorldInfo = [];
@@ -1227,6 +1229,20 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                         globalUseGroupScoring = settings.world_info_use_group_scoring;
                     } else if (settings.world_info_settings && typeof settings.world_info_settings.world_info_use_group_scoring === 'boolean') {
                         globalUseGroupScoring = settings.world_info_settings.world_info_use_group_scoring;
+                    }
+
+                    // Get world_info_recursive (can be in root settings or world_info_settings)
+                    if (typeof settings.world_info_recursive === 'boolean') {
+                        worldInfoRecursive = settings.world_info_recursive;
+                    } else if (settings.world_info_settings && typeof settings.world_info_settings.world_info_recursive === 'boolean') {
+                        worldInfoRecursive = settings.world_info_settings.world_info_recursive;
+                    }
+
+                    // Get world_info_max_recursion_steps (can be in root settings or world_info_settings)
+                    if (typeof settings.world_info_max_recursion_steps === 'number' && settings.world_info_max_recursion_steps >= 0) {
+                        maxRecursionSteps = settings.world_info_max_recursion_steps;
+                    } else if (settings.world_info_settings && typeof settings.world_info_settings.world_info_max_recursion_steps === 'number' && settings.world_info_settings.world_info_max_recursion_steps >= 0) {
+                        maxRecursionSteps = settings.world_info_settings.world_info_max_recursion_steps;
                     }
                 }
             }
@@ -1320,14 +1336,16 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
                     };
                 }
 
-                // Check keyword-based entries against chat history (with timed effects)
+                // Check keyword-based entries against chat history (with timed effects and recursive scanning)
                 const keywordActivatedEntries = checkWorldInfo(
                     keywordEntries, 
                     chatHistoryForWI, 
                     globalScanDepth,
                     globalCaseSensitive,
                     globalMatchWholeWords,
-                    timedEffectsResult
+                    timedEffectsResult,
+                    worldInfoRecursive,
+                    maxRecursionSteps
                 );
                 console.log(`[WI] Activated ${keywordActivatedEntries ? keywordActivatedEntries.length : 0} keyword-based entries`);
 

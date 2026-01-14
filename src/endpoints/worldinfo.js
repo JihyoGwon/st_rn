@@ -838,16 +838,28 @@ function getQueryTextForVectorSearch(chatHistory, queryMessageCount = 2) {
  */
 
 /**
+ * Scan states for recursive scanning
+ */
+const SCAN_STATE = {
+    INITIAL: 'INITIAL',
+    RECURSION: 'RECURSION',
+    NONE: 'NONE'
+};
+
+/**
  * Checks World Info entries against chat history and returns activated entries
+ * Supports recursive scanning: activated entries' content is re-scanned for more keyword matches
  * @param {Array} entries Array of World Info entries
  * @param {Array} chatHistory Array of chat messages
  * @param {number} globalScanDepth Maximum depth to scan
  * @param {boolean} globalCaseSensitive Whether to match case
  * @param {boolean} globalMatchWholeWords Whether to match whole words
  * @param {TimedEffectsResult|null} timedEffectsResult Result from checkTimedEffects
+ * @param {boolean} worldInfoRecursive Whether recursive scanning is enabled (default: false)
+ * @param {number} maxRecursionSteps Maximum recursion steps (0 = unlimited, default: 0)
  * @returns {Array} Array of activated entries
  */
-export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false, timedEffectsResult = null) {
+export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100, globalCaseSensitive = false, globalMatchWholeWords = false, timedEffectsResult = null, worldInfoRecursive = false, maxRecursionSteps = 0) {
     if (!entries || entries.length === 0) {
         return [];
     }
@@ -862,7 +874,12 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
         return [];
     }
 
-    const activatedEntries = [];
+    // Recursive scanning state
+    let scanState = SCAN_STATE.INITIAL;
+    let recursionCount = 0;
+    let recursionBuffer = ''; // Buffer for activated entries' content
+    const allActivatedEntries = new Map(); // Track all activated entries by key to avoid duplicates
+    const failedProbabilityChecks = new Set(); // Track entries that failed probability checks
     
     // Cache for converted chat texts by scan depth (to avoid redundant conversions)
     const chatTextCache = new Map();
@@ -878,7 +895,7 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
             for (const stickyEntry of timedEffectsResult.sticky) {
                 const entryKey = getEntryKey(stickyEntry);
                 stickyEntries.add(entryKey);
-                activatedEntries.push(stickyEntry);
+                allActivatedEntries.set(entryKey, stickyEntry);
                 console.log(`[WI] Entry ${entryKey} activated by sticky effect`);
             }
         }
@@ -902,180 +919,267 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
         }
     }
 
-    for (const entry of entries) {
-        const entryKey = getEntryKey(entry);
-        
-        // Skip disabled entries
-        if (entry.disable === true) {
-            continue;
+    // Get delayUntilRecursion levels (for delayed recursion entries)
+    const availableRecursionDelayLevels = [...new Set(entries
+        .filter(entry => entry.delayUntilRecursion)
+        .map(entry => entry.delayUntilRecursion === true ? 1 : entry.delayUntilRecursion)
+    )].sort((a, b) => a - b);
+    let currentRecursionDelayLevel = availableRecursionDelayLevels.shift() ?? 0;
+    if (currentRecursionDelayLevel > 0 && availableRecursionDelayLevels.length) {
+        console.debug(`[WI] Preparing first delayed recursion level ${currentRecursionDelayLevel}. Still delayed: ${availableRecursionDelayLevels.join(', ')}`);
+    }
+
+    console.debug(`[WI] --- SEARCHING ENTRIES (on ${entries.length} entries) ---`);
+
+    // Main recursive scanning loop
+    while (scanState !== SCAN_STATE.NONE) {
+        // Check max recursion steps limit
+        if (maxRecursionSteps > 0 && maxRecursionSteps <= recursionCount) {
+            console.debug(`[WI] Search stopped by reaching max recursion steps: ${maxRecursionSteps}`);
+            break;
         }
 
-        // Check @@activate decorator (force activation, before keyword checks)
-        if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@activate')) {
-            console.log(`[WI] Entry ${entryKey} activated by @@activate decorator`);
-            activatedEntries.push(entry);
-            continue;
+        recursionCount++;
+        console.debug(`[WI] --- LOOP #${recursionCount} START (State: ${scanState}) ---`);
+
+        // Determine next scan state (will be set to NONE if no more recursion needed)
+        let nextScanState = SCAN_STATE.NONE;
+        const activatedNow = []; // Entries activated in this iteration
+
+        // Get text to scan: chat history + recursion buffer
+        const textToScan = scanState === SCAN_STATE.INITIAL
+            ? convertChatToText(chatHistory, globalScanDepth)
+            : recursionBuffer;
+
+        if (!textToScan || textToScan.trim().length === 0) {
+            console.debug(`[WI] No text to scan in ${scanState} state`);
+            break;
         }
 
-        // Skip entries in cooldown
-        if (cooldownEntries.has(entryKey)) {
-            console.debug(`[WI] Skipped entry ${entryKey}: in cooldown`);
-            continue;
-        }
-
-        // Skip entries in delay
-        if (delayEntries.has(entryKey)) {
-            console.debug(`[WI] Skipped entry ${entryKey}: in delay`);
-            continue;
-        }
-
-        // Skip entries already activated by sticky (already added above)
-        if (stickyEntries.has(entryKey)) {
-            continue;
-        }
-
-        // Check constant entries (always activated)
-        // Constant entries don't need keys, they're always included
-        if (entry.constant === true) {
-            activatedEntries.push(entry);
-            continue;
-        }
-
-        // Skip entries without keys (non-constant entries need keys)
-        if (!entry.key || !Array.isArray(entry.key) || entry.key.length === 0) {
-            continue;
-        }
-
-        // Get entry-specific scan depth (override global if specified)
-        // entry.scanDepth can be null/undefined (use global), or a number
-        const entryScanDepth = entry.scanDepth !== null && entry.scanDepth !== undefined
-            ? entry.scanDepth
-            : globalScanDepth;
-        
-        // Ensure scanDepth is a valid positive number
-        const scanDepth = (typeof entryScanDepth === 'number' && entryScanDepth > 0) 
-            ? Math.min(entryScanDepth, 1000) // Cap at 1000 for safety
-            : globalScanDepth;
-        
-        // Log entry-specific scan depth if different from global
-        if (entryScanDepth !== null && entryScanDepth !== undefined && entryScanDepth !== globalScanDepth) {
-            console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" using scan depth: ${scanDepth} (entry override)`);
-        }
-
-        // Get entry-specific settings (override global if specified)
-        // entry.caseSensitive can be null (use global), true, or false
-        // entry.matchWholeWords can be null (use global), true, or false
-        const caseSensitive = entry.caseSensitive !== null && entry.caseSensitive !== undefined
-            ? entry.caseSensitive
-            : globalCaseSensitive;
-        const matchWholeWords = entry.matchWholeWords !== null && entry.matchWholeWords !== undefined
-            ? entry.matchWholeWords
-            : globalMatchWholeWords;
-
-        // Convert chat history to searchable text (use cache if available)
-        let chatText;
-        if (chatTextCache.has(scanDepth)) {
-            chatText = chatTextCache.get(scanDepth);
-        } else {
-            // Calculate actual messages scanned (may be less than scanDepth if chatHistory is shorter)
-            const actualScanned = Math.min(chatHistory.length, scanDepth);
-            chatText = convertChatToText(chatHistory, scanDepth);
-            chatTextCache.set(scanDepth, chatText);
-            if (actualScanned < chatHistory.length) {
-                console.log(`[WI] Scan depth ${scanDepth}: scanning last ${actualScanned} messages out of ${chatHistory.length} total`);
-            }
-        }
-
-        if (!chatText) {
-            // No chat text to search for this entry, skip
-            continue;
-        }
-
-        // Check Primary Keywords
-        let primaryMatch = false;
-        for (const keyword of entry.key) {
-            if (!keyword || typeof keyword !== 'string') {
+        // Scan all entries
+        for (const entry of entries) {
+            const entryKey = getEntryKey(entry);
+            
+            // Skip entries already activated (avoid duplicates)
+            if (allActivatedEntries.has(entryKey)) {
                 continue;
             }
 
-            // Keyword matching with case sensitivity and whole word matching
-            if (matchKeyword(chatText, keyword.trim(), caseSensitive, matchWholeWords)) {
-                primaryMatch = true;
-                break;
+            // Skip entries that failed probability checks
+            if (failedProbabilityChecks.has(entry)) {
+                continue;
             }
-        }
 
-        // Primary keyword must match first
-        if (!primaryMatch) {
-            continue;
-        }
+            // Skip disabled entries
+            if (entry.disable === true) {
+                continue;
+            }
 
-        // Check if entry has Secondary Keywords
-        const hasSecondaryKeywords = entry.keysecondary && 
-            Array.isArray(entry.keysecondary) && 
-            entry.keysecondary.length > 0;
+            // Recursion-specific checks
+            if (scanState === SCAN_STATE.RECURSION) {
+                // Skip entries with excludeRecursion flag
+                if (entry.excludeRecursion === true && !stickyEntries.has(entryKey)) {
+                    console.debug(`[WI] Entry ${entryKey} suppressed by excludeRecursion`);
+                    continue;
+                }
 
-        // If no secondary keywords, check @@dont_activate before activating
-        if (!hasSecondaryKeywords) {
-            // Check @@dont_activate decorator (force deactivation)
+                // Skip entries with delayUntilRecursion that haven't reached their level yet
+                if (entry.delayUntilRecursion) {
+                    // delayUntilRecursion === true means level 1, otherwise it's the numeric level
+                    const delayLevel = entry.delayUntilRecursion === true ? 1 : entry.delayUntilRecursion;
+                    if (delayLevel > currentRecursionDelayLevel && !stickyEntries.has(entryKey)) {
+                        console.debug(`[WI] Entry ${entryKey} suppressed by delayUntilRecursion level ${delayLevel} (current: ${currentRecursionDelayLevel})`);
+                        continue;
+                    }
+                }
+            } else if (scanState === SCAN_STATE.INITIAL) {
+                // Skip entries with delayUntilRecursion during initial scan
+                // (they will be processed during recursive scans)
+                if (entry.delayUntilRecursion && !stickyEntries.has(entryKey)) {
+                    console.debug(`[WI] Entry ${entryKey} suppressed by delayUntilRecursion (initial scan)`);
+                    continue;
+                }
+            }
+
+            // Check @@activate decorator (force activation, before keyword checks)
+            if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@activate')) {
+                console.log(`[WI] Entry ${entryKey} activated by @@activate decorator`);
+                activatedNow.push(entry);
+                continue;
+            }
+
+            // Skip entries in cooldown (unless sticky)
+            if (cooldownEntries.has(entryKey) && !stickyEntries.has(entryKey)) {
+                console.debug(`[WI] Skipped entry ${entryKey}: in cooldown`);
+                continue;
+            }
+
+            // Skip entries in delay
+            if (delayEntries.has(entryKey)) {
+                console.debug(`[WI] Skipped entry ${entryKey}: in delay`);
+                continue;
+            }
+
+            // Skip entries already activated by sticky (already added above)
+            if (stickyEntries.has(entryKey)) {
+                continue;
+            }
+
+            // Check constant entries (always activated)
+            // Constant entries don't need keys, they're always included
+            if (entry.constant === true) {
+                activatedNow.push(entry);
+                continue;
+            }
+
+            // Skip entries without keys (non-constant entries need keys)
+            if (!entry.key || !Array.isArray(entry.key) || entry.key.length === 0) {
+                continue;
+            }
+
+            // Get entry-specific settings (override global if specified)
+            // entry.caseSensitive can be null (use global), true, or false
+            // entry.matchWholeWords can be null (use global), true, or false
+            const caseSensitive = entry.caseSensitive !== null && entry.caseSensitive !== undefined
+                ? entry.caseSensitive
+                : globalCaseSensitive;
+            const matchWholeWords = entry.matchWholeWords !== null && entry.matchWholeWords !== undefined
+                ? entry.matchWholeWords
+                : globalMatchWholeWords;
+
+            // Check Primary Keywords against textToScan (chat history or recursion buffer)
+            let primaryMatch = false;
+            for (const keyword of entry.key) {
+                if (!keyword || typeof keyword !== 'string') {
+                    continue;
+                }
+
+                // Keyword matching with case sensitivity and whole word matching
+                if (matchKeyword(textToScan, keyword.trim(), caseSensitive, matchWholeWords)) {
+                    primaryMatch = true;
+                    break;
+                }
+            }
+
+            // Primary keyword must match first
+            if (!primaryMatch) {
+                continue;
+            }
+
+            // Check if entry has Secondary Keywords
+            const hasSecondaryKeywords = entry.keysecondary && 
+                Array.isArray(entry.keysecondary) && 
+                entry.keysecondary.length > 0;
+
+            // If no secondary keywords, check @@dont_activate before activating
+            if (!hasSecondaryKeywords) {
+                // Check @@dont_activate decorator (force deactivation)
+                if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@dont_activate')) {
+                    console.debug(`[WI] Entry ${entryKey} suppressed by @@dont_activate decorator`);
+                    continue;
+                }
+                activatedNow.push(entry);
+                continue;
+            }
+
+            // Check Secondary Keywords based on selective logic
+            const selectiveLogic = entry.selectiveLogic ?? world_info_logic.AND_ANY;
+            const secondaryMatch = checkSecondaryKeywords(
+                textToScan,
+                entry.keysecondary,
+                selectiveLogic,
+                caseSensitive,
+                matchWholeWords
+            );
+
+            if (!secondaryMatch) {
+                continue;
+            }
+
+            // Check @@dont_activate decorator (force deactivation, after all keyword checks)
             if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@dont_activate')) {
-                console.log(`[WI] Entry ${entryKey} suppressed by @@dont_activate decorator`);
+                console.debug(`[WI] Entry ${entryKey} suppressed by @@dont_activate decorator`);
                 continue;
             }
-            activatedEntries.push(entry);
-            continue;
+
+            // All keyword checks passed, add to activated entries for this iteration
+            activatedNow.push(entry);
         }
 
-        // Check Secondary Keywords based on selective logic
-        const selectiveLogic = entry.selectiveLogic ?? world_info_logic.AND_ANY;
-        const secondaryMatch = checkSecondaryKeywords(
-            chatText,
-            entry.keysecondary,
-            selectiveLogic,
-            caseSensitive,
-            matchWholeWords
-        );
+        console.debug(`[WI] Search done. Found ${activatedNow.length} possible entries in loop #${recursionCount}.`);
 
-        if (!secondaryMatch) {
-            continue;
-        }
+        // Process probability checks and add successful entries
+        const successfulNewEntries = [];
+        for (const entry of activatedNow) {
+            const entryKey = getEntryKey(entry);
 
-        // All keyword checks passed, now check probability
-        // Get entry-specific probability settings (default: probability=100, useProbability=true)
-        const probability = entry.probability !== null && entry.probability !== undefined
-            ? Math.max(0, Math.min(100, entry.probability)) // Clamp to 0-100
-            : 100;
-        const useProbability = entry.useProbability !== null && entry.useProbability !== undefined
-            ? entry.useProbability
-            : true;
+            // Get entry-specific probability settings (default: probability=100, useProbability=true)
+            const probability = entry.probability !== null && entry.probability !== undefined
+                ? Math.max(0, Math.min(100, entry.probability)) // Clamp to 0-100
+                : 100;
+            const useProbability = entry.useProbability !== null && entry.useProbability !== undefined
+                ? entry.useProbability
+                : true;
 
-        // Probability check: if useProbability is false or probability is 100, always activate
-        if (useProbability && probability < 100) {
-            const rollValue = Math.random() * 100; // Generate random value between 0-100
-            if (rollValue > probability) {
-                // Failed probability check, skip this entry
-                console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" failed probability check: ${rollValue.toFixed(2)} > ${probability}%`);
-                continue;
+            // Probability check: if useProbability is false or probability is 100, always activate
+            if (useProbability && probability < 100) {
+                const rollValue = Math.random() * 100; // Generate random value between 0-100
+                if (rollValue > probability) {
+                    // Failed probability check, skip this entry
+                    console.debug(`[WI] Entry "${entry.key?.[0] || 'unknown'}" failed probability check: ${rollValue.toFixed(2)} > ${probability}%`);
+                    failedProbabilityChecks.add(entry);
+                    continue;
+                }
+                console.debug(`[WI] Entry "${entry.key?.[0] || 'unknown'}" passed probability check: ${rollValue.toFixed(2)} <= ${probability}%`);
             }
-            console.log(`[WI] Entry "${entry.key?.[0] || 'unknown'}" passed probability check: ${rollValue.toFixed(2)} <= ${probability}%`);
+
+            // All checks passed, add to activated entries
+            allActivatedEntries.set(entryKey, entry);
+            successfulNewEntries.push(entry);
         }
 
-        // Check @@dont_activate decorator (force deactivation, after all keyword checks)
-        if (entry.decorators && Array.isArray(entry.decorators) && entry.decorators.includes('@@dont_activate')) {
-            console.log(`[WI] Entry ${entryKey} suppressed by @@dont_activate decorator`);
-            continue;
+        console.debug(`[WI] --- LOOP #${recursionCount} RESULT ---`);
+        if (!successfulNewEntries.length) {
+            console.debug(`[WI] No new entries activated in loop #${recursionCount}.`);
+        } else {
+            console.debug(`[WI] Successfully activated ${successfulNewEntries.length} new entries. Total: ${allActivatedEntries.size} entries activated.`);
         }
 
-        // All checks passed, activate entry
-        activatedEntries.push(entry);
+        // Prepare entries for recursion buffer (exclude entries with preventRecursion)
+        const successfulNewEntriesForRecursion = successfulNewEntries.filter(entry => !entry.preventRecursion);
+
+        // Check if we should continue with recursion
+        if (worldInfoRecursive && successfulNewEntriesForRecursion.length > 0) {
+            nextScanState = SCAN_STATE.RECURSION;
+            
+            // Add activated entries' content to recursion buffer
+            const newRecursionText = successfulNewEntriesForRecursion
+                .map(entry => entry.content || '')
+                .filter(content => content.trim().length > 0)
+                .join('\n');
+            
+            if (newRecursionText) {
+                recursionBuffer = newRecursionText + (recursionBuffer ? '\n' + recursionBuffer : '');
+                console.debug(`[WI] Added ${successfulNewEntriesForRecursion.length} entries to recursion buffer (${newRecursionText.length} chars)`);
+            }
+        }
+
+        // Check if there are more delayed recursion levels to process
+        // This allows entries with higher delayUntilRecursion levels to activate
+        if (nextScanState === SCAN_STATE.NONE && availableRecursionDelayLevels.length > 0) {
+            nextScanState = SCAN_STATE.RECURSION;
+            currentRecursionDelayLevel = availableRecursionDelayLevels.shift();
+            console.debug(`[WI] Processing next delayed recursion level: ${currentRecursionDelayLevel}. Still delayed: ${availableRecursionDelayLevels.join(', ')}`);
+        }
+
+        // Update scan state for next iteration
+        scanState = nextScanState;
     }
 
-    // Log scan depth usage if multiple depths were used
-    if (chatTextCache.size > 1) {
-        console.log(`[WI] Used ${chatTextCache.size} different scan depths: ${Array.from(chatTextCache.keys()).join(', ')}`);
-    }
+    console.debug(`[WI] Recursive scanning completed after ${recursionCount} loop(s). Total entries activated: ${allActivatedEntries.size}`);
 
-    return activatedEntries;
+    // Convert Map to Array
+    return Array.from(allActivatedEntries.values());
 }
 
 /**
