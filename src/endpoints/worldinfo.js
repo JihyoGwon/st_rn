@@ -498,14 +498,20 @@ export function checkWorldInfo(entries, chatHistory = [], globalScanDepth = 100,
     const chatTextCache = new Map();
 
     for (const entry of entries) {
-        // Skip entries without keys
-        if (!entry.key || !Array.isArray(entry.key) || entry.key.length === 0) {
+        // Skip disabled entries
+        if (entry.disable === true) {
             continue;
         }
 
         // Check constant entries (always activated)
+        // Constant entries don't need keys, they're always included
         if (entry.constant === true) {
             activatedEntries.push(entry);
+            continue;
+        }
+
+        // Skip entries without keys (non-constant entries need keys)
+        if (!entry.key || !Array.isArray(entry.key) || entry.key.length === 0) {
             continue;
         }
 
