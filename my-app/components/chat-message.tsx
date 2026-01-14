@@ -54,11 +54,8 @@ export const ChatMessageComponent = ({ message }: ChatMessageProps) => {
             style={styles.avatar}
             defaultSource={require('@/assets/images/icon.png')}
             resizeMode="cover"
-            onError={(error) => {
-              console.log('Avatar image error:', error);
-            }}
-            onLoad={() => {
-              console.log('Avatar image loaded');
+            onError={() => {
+              // 이미지 로드 실패 시 기본 이미지로 대체됨 (조용히 처리)
             }}
           />
         </View>
