@@ -1,59 +1,60 @@
 node_modules/
-public/chats/
-public/characters/
-public/User Avatars/
-public/backgrounds/
-public/groups/
-public/group chats/
-public/worlds/
-public/user/
-public/css/bg_load.css
-public/themes/
-public/OpenAI Settings/
-public/KoboldAI Settings/
-public/NovelAI Settings/
-public/TextGen Settings/
-public/instruct/
-public/context/
-public/scripts/extensions/third-party/
-public/stats.json
-/uploads/
+apps/*/node_modules/
+apps/server/public/chats/
+apps/server/public/characters/
+apps/server/public/User Avatars/
+apps/server/public/backgrounds/
+apps/server/public/groups/
+apps/server/public/group chats/
+apps/server/public/worlds/
+apps/server/public/user/
+apps/server/public/css/bg_load.css
+apps/server/public/themes/
+apps/server/public/OpenAI Settings/
+apps/server/public/KoboldAI Settings/
+apps/server/public/NovelAI Settings/
+apps/server/public/TextGen Settings/
+apps/server/public/instruct/
+apps/server/public/context/
+apps/server/public/scripts/extensions/third-party/
+apps/server/public/stats.json
+apps/server/uploads/
 *.jsonl
-/config.conf
-/config.yaml
-/config.conf.bak
-/docker/config
-/docker/user
-/docker/extensions
-/docker/data
+apps/server/config.conf
+apps/server/config.yaml
+apps/server/config.conf.bak
+docker/config
+docker/user
+docker/extensions
+docker/data
 .DS_Store
-public/settings.json
-/thumbnails
-whitelist.txt
+apps/server/public/settings.json
+apps/server/thumbnails
+apps/server/whitelist.txt
 .vscode/**
 !.vscode/extensions.json
 .idea/
-secrets.json
-/dist
-/backups/
-public/movingUI/
-public/QuickReplies/
-content.log
+apps/server/secrets.json
+apps/server/dist
+apps/server/backups/
+apps/server/public/movingUI/
+apps/server/public/QuickReplies/
+apps/server/content.log
 cloudflared.exe
-public/assets/
-access.log
-/vectors/
-/cache/
-public/css/user.css
-public/error/
-/plugins/
-/data
-/default/scaffold
-public/scripts/extensions/third-party
-/certs
+apps/server/public/assets/
+apps/server/access.log
+apps/server/vectors/
+apps/server/cache/
+apps/server/public/css/user.css
+apps/server/public/error/
+apps/server/plugins/
+apps/server/data
+apps/server/default/scaffold
+apps/server/public/scripts/extensions/third-party
+apps/server/certs
 .aider*
 .env
-/StartDev.bat
+StartDev.bat
 yarn.lock
 *.code-workspace
 test-results/

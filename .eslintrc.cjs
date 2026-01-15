@@ -15,7 +15,7 @@ module.exports = {
     overrides: [
         {
             // Server-side files (plus this configuration file)
-            files: ['src/**/*.js', './*.js', 'plugins/**/*.js'],
+            files: ['apps/server/src/**/*.js', 'apps/server/*.js', 'apps/server/plugins/**/*.js'],
             env: {
                 node: true,
             },
@@ -37,7 +37,7 @@ module.exports = {
             },
         },
         {
-            files: ['src/**/*.mjs'],
+            files: ['apps/server/src/**/*.mjs'],
             parserOptions: {
                 sourceType: 'module',
             },
@@ -47,7 +47,7 @@ module.exports = {
         },
         {
             // Browser-side files
-            files: ['public/**/*.js'],
+            files: ['apps/server/public/**/*.js'],
             env: {
                 browser: true,
                 jquery: true,
@@ -69,16 +69,16 @@ module.exports = {
         '**/node_modules/**',
         '**/dist/**',
         '**/.git/**',
-        'public/lib/**',
-        'backups/**',
-        'data/**',
-        'cache/**',
-        'src/tokenizers/**',
+        'apps/server/public/lib/**',
+        'apps/server/backups/**',
+        'apps/server/data/**',
+        'apps/server/cache/**',
+        'apps/server/src/tokenizers/**',
         'docker/**',
-        'plugins/**',
+        'apps/server/plugins/**',
         '**/*.min.js',
-        'public/scripts/extensions/quick-reply/lib/**',
-        'public/scripts/extensions/tts/lib/**',
+        'apps/server/public/scripts/extensions/quick-reply/lib/**',
+        'apps/server/public/scripts/extensions/tts/lib/**',
     ],
     rules: {
         'jsdoc/no-undefined-types': ['warn', { disableReporting: true, markVariablesAsUsed: true }],

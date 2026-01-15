@@ -2,7 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import yargs from 'yargs';
-import { serverEvents, EVENT_NAMES } from '../server-events.js';
+import { serverEvents, EVENT_NAMES } from '../server/src/server-events.js';
 
 const cliArguments = yargs(process.argv)
     .usage('Usage: <your-start-script> [options]')
@@ -38,10 +38,10 @@ function startServer() {
             appUrl = url.toString();
             createSillyTavernWindow();
         });
-        const sillyTavernRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+        const sillyTavernRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../server');
         process.chdir(sillyTavernRoot);
 
-        import('../server-global.js');
+        import('../server/src/server-global.js');
     });
 }
 

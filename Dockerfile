@@ -19,6 +19,9 @@ RUN \
   echo "*** Install npm packages ***" && \
   npm ci --no-audit --no-fund --loglevel=error --no-progress --omit=dev && npm cache clean --force
 
+# Change to server directory
+WORKDIR ${APP_HOME}/apps/server
+
 # Create config directory and link config.yaml
 RUN \
   rm -f "config.yaml" || true && \
@@ -28,13 +31,13 @@ RUN \
 # Pre-compile public libraries
 RUN \
   echo "*** Run Webpack ***" && \
-  node "./docker/build-lib.js"
+  node "../../docker/build-lib.js"
 
 # Set the entrypoint script
 RUN \
   echo "*** Cleanup ***" && \
-  mv "./docker/docker-entrypoint.sh" "./" && \
-  rm -rf "./docker" && \
+  mv "../../docker/docker-entrypoint.sh" "./" && \
+  rm -rf "../../docker" && \
   echo "*** Make docker-entrypoint.sh executable ***" && \
   chmod +x "./docker-entrypoint.sh" && \
   echo "*** Convert line endings to Unix format ***" && \

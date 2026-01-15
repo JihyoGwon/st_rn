@@ -1,5 +1,5 @@
 {
-  "name": "sillytavern-electron",
+  "name": "@sillytavern/electron",
   "version": "1.0.0",
   "description": "Electron server for SillyTavern",
   "license": "AGPL-3.0",

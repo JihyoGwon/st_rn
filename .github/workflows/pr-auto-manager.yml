@@ -83,10 +83,10 @@ jobs:
         run: npm ci
 
       - name: Install test dependencies
-        run: npm ci --prefix tests
+        run: npm ci --workspace=apps/tests
 
       - name: Run unit tests
-        run: npm run test:unit --prefix tests
+        run: npm run test:unit --workspace=apps/tests
 
   label-by-size:
     name: 🏷️ Label PR by Size
@@ -131,7 +131,7 @@ jobs:
           fail_if_xl: 'false'
           files_to_ignore: |
             "package-lock.json"
-            "public/lib/*"
+            "apps/server/public/lib/*"
 
   label-by-branches:
     name: 🏷️ Label PR by Branches
