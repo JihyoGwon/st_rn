@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { promises as fsPromises } from 'node:fs';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
@@ -44,7 +45,10 @@ router.post('/upload', getFileNameValidationFunction('overwrite_name'), async (r
     try {
         const pathToUpload = path.join(request.file.destination, request.file.filename);
         const crop = tryParse(request.query.crop);
-        const rawImg = await Jimp.read(pathToUpload);
+        // 파일을 직접 읽어서 버퍼로 변환한 후 Jimp.fromBuffer를 사용
+        // 이렇게 하면 fetch-patch.js의 제한을 우회할 수 있음
+        const fileBuffer = await fsPromises.readFile(pathToUpload);
+        const rawImg = await Jimp.fromBuffer(fileBuffer);
         const image = await applyAvatarCropResize(rawImg, crop);
 
         // Remove previous thumbnail and bust cache if overwriting

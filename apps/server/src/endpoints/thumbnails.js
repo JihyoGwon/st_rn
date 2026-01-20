@@ -133,7 +133,10 @@ async function generateThumbnail(directories, type, file) {
 
         try {
             const size = dimensions[type];
-            const image = await Jimp.read(pathToOriginalFile);
+            // 파일을 직접 읽어서 버퍼로 변환한 후 Jimp.fromBuffer를 사용
+            // 이렇게 하면 fetch-patch.js의 제한을 우회할 수 있음
+            const fileBuffer = await fsPromises.readFile(pathToOriginalFile);
+            const image = await Jimp.fromBuffer(fileBuffer);
             const width = !isNaN(size?.[0]) && size?.[0] > 0 ? size[0] : image.bitmap.width;
             const height = !isNaN(size?.[1]) && size?.[1] > 0 ? size[1] : image.bitmap.height;
             image.cover({ w: width, h: height });

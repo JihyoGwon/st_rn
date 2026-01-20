@@ -819,7 +819,8 @@ async function fetchPerchanceAvatar(avatarUrl, isAvatarBase64) {
         } else {
             // use jimp to convert the base64 to PNG if it's not PNG
             console.debug('Perchance character avatar is not PNG, converting to PNG...');
-            return await Jimp.read(buffer).then(image => image.getBuffer(JimpMime.png));
+            // Jimp.fromBuffer를 사용하여 fetch-patch.js의 제한을 우회
+            return await Jimp.fromBuffer(buffer).then(image => image.getBuffer(JimpMime.png));
         }
     }
 
@@ -837,7 +838,8 @@ async function fetchPerchanceAvatar(avatarUrl, isAvatarBase64) {
             console.debug(`Perchance character avatar is not PNG: ${avatarContentType}. Converting to PNG...`);
 
             // use jimp to convert the image to PNG if it's not PNG
-            return await Jimp.read(avatarBuffer)
+            // Jimp.fromBuffer를 사용하여 fetch-patch.js의 제한을 우회
+            return await Jimp.fromBuffer(avatarBuffer)
                 .then(image => image.getBuffer(JimpMime.png));
         }
     }

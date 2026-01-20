@@ -8,8 +8,10 @@ import isDocker from 'is-docker';
 
 import { getIpFromRequest } from '../express-common.js';
 import { color, getConfigValue, safeReadFileSync } from '../util.js';
+import { serverDirectory } from '../server-directory.js';
 
-const whitelistPath = path.join(process.cwd(), './whitelist.txt');
+// serverDirectory는 apps/server/src이므로, whitelist.txt는 상위 디렉토리에 있음
+const whitelistPath = path.join(path.dirname(serverDirectory), 'whitelist.txt');
 const enableForwardedWhitelist = !!getConfigValue('enableForwardedWhitelist', false, 'boolean');
 const whitelistDockerHosts = !!getConfigValue('whitelistDockerHosts', true, 'boolean');
 /** @type {string[]} */

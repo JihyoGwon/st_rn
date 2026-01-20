@@ -226,7 +226,8 @@ export async function getUserDirectoriesList() {
  * Perform migration from the old user data format to the new one.
  */
 export async function migrateUserData() {
-    const publicDirectory = path.join(process.cwd(), 'public');
+    // serverDirectory는 apps/server/src이므로, public 디렉토리는 상위 디렉토리에 있음
+    const publicDirectory = path.join(path.dirname(serverDirectory), 'public');
 
     // No need to migrate if the characters directory doesn't exists
     if (!fs.existsSync(path.join(publicDirectory, 'characters'))) {
@@ -348,17 +349,18 @@ export async function migrateUserData() {
             file: false,
         },
         {
-            old: path.join(process.cwd(), 'thumbnails'),
+            // process.cwd()는 apps/server/src를 가리키므로, DATA_ROOT를 기준으로 함
+            old: path.join(globalThis.DATA_ROOT, 'thumbnails'),
             new: userDirectories.thumbnails,
             file: false,
         },
         {
-            old: path.join(process.cwd(), 'vectors'),
+            old: path.join(globalThis.DATA_ROOT, 'vectors'),
             new: userDirectories.vectors,
             file: false,
         },
         {
-            old: path.join(process.cwd(), 'secrets.json'),
+            old: path.join(globalThis.DATA_ROOT, 'secrets.json'),
             new: path.join(userDirectories.root, 'secrets.json'),
             file: true,
         },
@@ -375,7 +377,8 @@ export async function migrateUserData() {
     ];
 
     const currentDate = new Date().toISOString().split('T')[0];
-    const backupDirectory = path.join(process.cwd(), PUBLIC_DIRECTORIES.backups, '_migration', currentDate);
+    // PUBLIC_DIRECTORIES.backups는 상대 경로이므로, DATA_ROOT를 기준으로 함
+    const backupDirectory = path.join(globalThis.DATA_ROOT, PUBLIC_DIRECTORIES.backups, '_migration', currentDate);
 
     if (!fs.existsSync(backupDirectory)) {
         fs.mkdirSync(backupDirectory, { recursive: true });

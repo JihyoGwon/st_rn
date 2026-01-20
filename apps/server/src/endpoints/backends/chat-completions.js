@@ -699,7 +699,14 @@ async function sendMakerSuiteRequest(request, response) {
             const inlineData = (candidates?.[0]?.content?.parts ?? []).some(part => part.inlineData);
             console.debug(`${apiName} response:`, util.inspect(generateResponseJson, { depth: 5, colors: true }));
 
-            const responseText = typeof responseContent === 'string' ? responseContent : responseContent?.parts?.filter(part => !part.thought)?.map(part => part.text)?.join('\n\n');
+            // Filter out thought parts and extract text, handling undefined/null text values
+            const responseText = typeof responseContent === 'string' 
+                ? responseContent 
+                : responseContent?.parts
+                    ?.filter(part => !part.thought && part.text != null)
+                    ?.map(part => part.text)
+                    ?.filter(text => text && text.trim().length > 0)
+                    ?.join('\n\n') || '';
             if (!responseText && !functionCall && !inlineData) {
                 let message = `${apiName} Candidate text empty`;
                 console.warn(message, generateResponseJson);

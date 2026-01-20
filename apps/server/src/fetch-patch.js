@@ -18,11 +18,21 @@ globalThis.fetch = async (/** @type {string | URL | Request} */ request, /** @ty
     }
     const url = getRequestURL(request);
     const filePath = path.resolve(fileURLToPath(url));
+    const parsedPath = path.parse(filePath);
+    
+    // WASM 파일은 node_modules 안에 있을 수 있으므로, 여러 레벨의 상위 디렉토리도 허용
+    const serverParentDirectory = path.dirname(serverDirectory);
+    const projectRoot = path.resolve(serverDirectory, '..', '..');
     const isUnderServerDirectory = isPathUnderParent(serverDirectory, filePath);
-    if (!isUnderServerDirectory) {
+    const isUnderServerParentDirectory = isPathUnderParent(serverParentDirectory, filePath);
+    const isUnderProjectRoot = isPathUnderParent(projectRoot, filePath);
+    const isInNodeModules = filePath.includes(path.sep + 'node_modules' + path.sep);
+    
+    // WASM 파일이 node_modules 안에 있고, serverDirectory/상위 디렉토리/프로젝트 루트 안에 있으면 허용
+    if (!isUnderServerDirectory && !isUnderServerParentDirectory && !(isUnderProjectRoot && isInNodeModules)) {
         throw new Error('Requested file path is outside of the server directory.');
     }
-    const parsedPath = path.parse(filePath);
+    
     if (!ALLOWED_EXTENSIONS.includes(parsedPath.ext)) {
         throw new Error('Unsupported file extension.');
     }

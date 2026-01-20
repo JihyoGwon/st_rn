@@ -13,7 +13,17 @@ function configureTransformers() {
     // Limit the number of threads to 1 to avoid issues on Android
     env.backends.onnx.wasm.numThreads = 1;
     // Use WASM from a local folder to avoid CDN connections
-    env.backends.onnx.wasm.wasmPaths = path.join(serverDirectory, 'node_modules', 'sillytavern-transformers', 'dist') + path.sep;
+    // 프로젝트 루트의 node_modules를 찾기 위해 serverDirectory에서 두 단계 위로 올라감
+    // serverDirectory는 apps/server/src이므로, 프로젝트 루트는 ../../node_modules
+    const projectRoot = path.resolve(serverDirectory, '..', '..');
+    const wasmPath = path.join(projectRoot, 'node_modules', 'sillytavern-transformers', 'dist');
+    
+    // 프로젝트 루트에 node_modules가 없으면 serverDirectory의 node_modules를 시도
+    const wasmPaths = fs.existsSync(path.join(projectRoot, 'node_modules'))
+        ? wasmPath + path.sep
+        : path.join(serverDirectory, 'node_modules', 'sillytavern-transformers', 'dist') + path.sep;
+    
+    env.backends.onnx.wasm.wasmPaths = wasmPaths;
 }
 
 const tasks = {

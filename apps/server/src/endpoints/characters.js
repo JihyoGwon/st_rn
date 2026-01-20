@@ -324,7 +324,10 @@ async function parseImageBuffer(buffer, crop) {
  */
 async function tryReadImage(imgPath, crop) {
     try {
-        const rawImg = await Jimp.read(imgPath);
+        // 파일을 직접 읽어서 버퍼로 변환한 후 Jimp.fromBuffer를 사용
+        // 이렇게 하면 fetch-patch.js의 제한을 우회할 수 있음
+        const buffer = await fsPromises.readFile(imgPath);
+        const rawImg = await Jimp.fromBuffer(buffer);
         return await applyAvatarCropResize(rawImg, crop);
     }
     // If it's an unsupported type of image (APNG) - just read the file as buffer
