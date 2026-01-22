@@ -11,7 +11,6 @@ import {
 } from './lib.js';
 
 import { humanizedDateTime, favsToHotswap, getMessageTimeStamp, dragElement, isMobile, initRossMods } from './scripts/RossAscends-mods.js';
-import { userStatsHandler, statMesProcess, initStats } from './scripts/stats.js';
 import {
     generateKoboldWithStreaming,
     kai_settings,
@@ -713,7 +712,6 @@ async function firstLoadInit() {
     initWorldInfo();
     initHorde();
     initRossMods();
-    initStats();
     initCfg();
     initLogprobs();
     initInputMarkdown();
@@ -5686,7 +5684,6 @@ export async function sendMessageAsUser(messageText, messageBias, insertAt = nul
     }
 
     await populateFileAttachment(message);
-    statMesProcess(message, 'user', characters, this_chid, '');
 
     chat_metadata['tainted'] = true;
 
@@ -6555,7 +6552,6 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         item.swipe_info.push(...swipeInfoArray);
     }
 
-    statMesProcess(chat[chat.length - 1], type, characters, this_chid, oldMessage);
     return { type, getMessage };
 }
 
@@ -12322,9 +12318,6 @@ jQuery(async function () {
         isManualInput = false;
     });
 
-    $('.user_stats_button').on('click', function () {
-        userStatsHandler();
-    });
 
     $(document).on('click', '.external_import_button, #external_import_button', async () => {
         const html = await renderTemplateAsync('importCharacters');
