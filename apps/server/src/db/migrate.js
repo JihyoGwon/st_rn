@@ -6,10 +6,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getPool } from './index.js';
+import { existsSync } from 'node:fs';
 
+// Config 파일 경로를 가장 먼저 설정 (다른 모듈 import 전에)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const configPath = path.join(__dirname, '..', '..', 'config.yaml');
+
+// setConfigFilePath를 먼저 import하고 설정
+const { setConfigFilePath } = await import('../util.js');
+if (existsSync(configPath)) {
+  setConfigFilePath(configPath);
+} else {
+  console.warn(`경고: config.yaml을 찾을 수 없습니다: ${configPath}`);
+}
+
+// 이제 다른 모듈 import
+import { getPool } from './index.js';
 
 async function runMigrations() {
   const pool = getPool();
@@ -35,6 +48,11 @@ async function runMigrations() {
         console.log(`✓ ${file} completed`);
       } catch (error) {
         await client.query('ROLLBACK');
+        // 테이블이 이미 존재하는 경우는 경고만 (42P07 = duplicate_table)
+        if (error.code === '42P07') {
+          console.warn(`⚠ ${file} skipped (table already exists)`);
+          continue;
+        }
         console.error(`✗ ${file} failed:`, error.message);
         throw error;
       }

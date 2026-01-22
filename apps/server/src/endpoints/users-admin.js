@@ -16,13 +16,33 @@ import {
     ensurePublicDirectoriesExist,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
+import { getUserRepository } from '../repositories/factory.js';
 
 export const router = express.Router();
 
 router.post('/get', requireAdminMiddleware, async (_request, response) => {
     try {
-        /** @type {import('../users.js').User[]} */
-        const users = await storage.values(x => x.key.startsWith(KEY_PREFIX));
+        // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
+        let users;
+        try {
+            const repo = getUserRepository();
+            const userDataList = await repo.getAll();
+            
+            // Repository 형식을 기존 User 형식으로 변환
+            users = userDataList.map(userData => ({
+                handle: userData.handle,
+                name: userData.name,
+                password: userData.passwordHash,
+                salt: userData.salt,
+                enabled: userData.enabled,
+                admin: userData.admin,
+                created: userData.created,
+            }));
+        } catch (error) {
+            // Repository 실패 시 기존 방식으로 폴백
+            console.warn('[users-admin/get] Repository failed, falling back to filesystem:', error);
+            users = await storage.values(x => x.key.startsWith(KEY_PREFIX));
+        }
 
         /** @type {Promise<import('../users.js').UserViewModel>[]} */
         const viewModelPromises = users
@@ -61,16 +81,16 @@ router.post('/disable', requireAdminMiddleware, async (request, response) => {
             return response.status(400).json({ error: 'Cannot disable yourself' });
         }
 
-        /** @type {import('../users.js').User} */
-        const user = await storage.getItem(toKey(request.body.handle));
+        const repo = getUserRepository();
+        const userData = await repo.get(request.body.handle);
 
-        if (!user) {
+        if (!userData) {
             console.error('Disable user failed: User not found');
             return response.status(404).json({ error: 'User not found' });
         }
 
-        user.enabled = false;
-        await storage.setItem(toKey(request.body.handle), user);
+        userData.enabled = false;
+        await repo.save(request.body.handle, userData);
         return response.sendStatus(204);
     } catch (error) {
         console.error('User disable failed:', error);
@@ -85,16 +105,16 @@ router.post('/enable', requireAdminMiddleware, async (request, response) => {
             return response.status(400).json({ error: 'Missing required fields' });
         }
 
-        /** @type {import('../users.js').User} */
-        const user = await storage.getItem(toKey(request.body.handle));
+        const repo = getUserRepository();
+        const userData = await repo.get(request.body.handle);
 
-        if (!user) {
+        if (!userData) {
             console.error('Enable user failed: User not found');
             return response.status(404).json({ error: 'User not found' });
         }
 
-        user.enabled = true;
-        await storage.setItem(toKey(request.body.handle), user);
+        userData.enabled = true;
+        await repo.save(request.body.handle, userData);
         return response.sendStatus(204);
     } catch (error) {
         console.error('User enable failed:', error);
@@ -109,16 +129,16 @@ router.post('/promote', requireAdminMiddleware, async (request, response) => {
             return response.status(400).json({ error: 'Missing required fields' });
         }
 
-        /** @type {import('../users.js').User} */
-        const user = await storage.getItem(toKey(request.body.handle));
+        const repo = getUserRepository();
+        const userData = await repo.get(request.body.handle);
 
-        if (!user) {
+        if (!userData) {
             console.error('Promote user failed: User not found');
             return response.status(404).json({ error: 'User not found' });
         }
 
-        user.admin = true;
-        await storage.setItem(toKey(request.body.handle), user);
+        userData.admin = true;
+        await repo.save(request.body.handle, userData);
         return response.sendStatus(204);
     } catch (error) {
         console.error('User promote failed:', error);
@@ -138,16 +158,17 @@ router.post('/demote', requireAdminMiddleware, async (request, response) => {
             return response.status(400).json({ error: 'Cannot demote yourself' });
         }
 
-        /** @type {import('../users.js').User} */
-        const user = await storage.getItem(toKey(request.body.handle));
+        const repo = getUserRepository();
+        const userData = await repo.get(request.body.handle);
 
-        if (!user) {
+        if (!userData) {
             console.error('Demote user failed: User not found');
             return response.status(404).json({ error: 'User not found' });
         }
 
-        user.admin = false;
-        await storage.setItem(toKey(request.body.handle), user);
+        // 일반 사용자로 강등
+        userData.admin = false;
+        await repo.save(request.body.handle, userData);
         return response.sendStatus(204);
     } catch (error) {
         console.error('User demote failed:', error);
@@ -178,7 +199,21 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
         const salt = getPasswordSalt();
         const password = request.body.password ? getPasswordHash(request.body.password, salt) : '';
 
+        const repo = getUserRepository();
         const newUser = {
+            handle: handle,
+            name: request.body.name || 'Anonymous',
+            passwordHash: password,
+            salt: salt,
+            admin: !!request.body.admin,
+            enabled: true,
+            created: Date.now(),
+        };
+
+        await repo.save(handle, newUser);
+        
+        // 파일시스템에도 저장 (하이브리드 모드에서 자동 처리되지만, 명시적으로도 저장)
+        await storage.setItem(toKey(handle), {
             handle: handle,
             name: request.body.name || 'Anonymous',
             created: Date.now(),
@@ -186,9 +221,7 @@ router.post('/create', requireAdminMiddleware, async (request, response) => {
             salt: salt,
             admin: !!request.body.admin,
             enabled: true,
-        };
-
-        await storage.setItem(toKey(handle), newUser);
+        });
 
         // Create user directories
         console.info('Creating data directories for', newUser.handle);
@@ -219,6 +252,10 @@ router.post('/delete', requireAdminMiddleware, async (request, response) => {
             return response.status(400).json({ error: 'Sorry, but the default user cannot be deleted. It is required as a fallback.' });
         }
 
+        const repo = getUserRepository();
+        await repo.delete(request.body.handle);
+        
+        // 파일시스템에서도 삭제 (하이브리드 모드에서 자동 처리되지만, 명시적으로도 삭제)
         await storage.removeItem(toKey(request.body.handle));
 
         if (request.body.purge) {

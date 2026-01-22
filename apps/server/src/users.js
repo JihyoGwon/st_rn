@@ -20,6 +20,7 @@ import { getConfigValue, color, delay, generateTimestamp, invalidateFirefoxCache
 import { readSecret, writeSecret } from './endpoints/secrets.js';
 import { getContentOfType } from './endpoints/content-manager.js';
 import { serverDirectory } from './server-directory.js';
+import { getUserRepository } from './repositories/factory.js';
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -627,9 +628,18 @@ export function getCsrfSecret(request) {
  * @returns {Promise<string[]>} - The list of user handles
  */
 export async function getAllUserHandles() {
-    const keys = await storage.keys(x => x.key.startsWith(KEY_PREFIX));
-    const handles = keys.map(x => x.replace(KEY_PREFIX, ''));
-    return handles;
+    try {
+        // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
+        const repo = getUserRepository();
+        const users = await repo.getAll();
+        return users.map(user => user.handle);
+    } catch (error) {
+        // Repository 실패 시 기존 방식으로 폴백
+        console.warn('[getAllUserHandles] Repository failed, falling back to filesystem:', error);
+        const keys = await storage.keys(x => x.key.startsWith(KEY_PREFIX));
+        const handles = keys.map(x => x.replace(KEY_PREFIX, ''));
+        return handles;
+    }
 }
 
 /**
@@ -875,12 +885,36 @@ export async function setUserDataMiddleware(request, response, next) {
         return next();
     }
 
-    /** @type {User} */
-    const user = await storage.getItem(toKey(handle));
-
-    if (!user) {
-        console.error('User not found:', handle);
-        return next();
+    // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
+    let user;
+    try {
+        const repo = getUserRepository();
+        const userData = await repo.get(handle);
+        
+        if (!userData) {
+            console.error('User not found:', handle);
+            return next();
+        }
+        
+        // Repository 형식을 기존 User 형식으로 변환
+        user = {
+            handle: userData.handle,
+            name: userData.name,
+            password: userData.passwordHash,
+            salt: userData.salt,
+            enabled: userData.enabled,
+            admin: userData.admin,
+            created: userData.created,
+        };
+    } catch (error) {
+        // Repository 실패 시 기존 방식으로 폴백
+        console.warn('[setUserDataMiddleware] Repository failed, falling back to filesystem:', error);
+        user = await storage.getItem(toKey(handle));
+        
+        if (!user) {
+            console.error('User not found:', handle);
+            return next();
+        }
     }
 
     if (!user.enabled) {

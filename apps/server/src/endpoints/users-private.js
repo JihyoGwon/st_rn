@@ -9,6 +9,7 @@ import { getUserAvatar, toKey, getPasswordHash, getPasswordSalt, createBackupArc
 import { SETTINGS_FILE } from '../constants.js';
 import { checkForNewContent, CONTENT_TYPES } from './content-manager.js';
 import { color, Cache } from '../util.js';
+import { getUserRepository } from '../repositories/factory.js';
 
 const RESET_CACHE = new Cache(5 * 60 * 1000);
 
@@ -119,6 +120,27 @@ router.post('/change-password', async (request, response) => {
             return response.status(403).json({ error: 'Incorrect password' });
         }
 
+        // Repository Pattern 사용
+        const repo = getUserRepository();
+        const userData = await repo.get(request.body.handle);
+        
+        if (!userData) {
+            console.error('Change password failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+        
+        if (request.body.newPassword) {
+            const salt = getPasswordSalt();
+            userData.passwordHash = getPasswordHash(request.body.newPassword, salt);
+            userData.salt = salt;
+        } else {
+            userData.passwordHash = '';
+            userData.salt = '';
+        }
+        
+        await repo.save(request.body.handle, userData);
+        
+        // 파일시스템에도 저장 (하이브리드 모드에서 자동 처리되지만, 명시적으로도 저장)
         if (request.body.newPassword) {
             const salt = getPasswordSalt();
             user.password = getPasswordHash(request.body.newPassword, salt);
@@ -127,8 +149,8 @@ router.post('/change-password', async (request, response) => {
             user.password = '';
             user.salt = '';
         }
-
         await storage.setItem(toKey(request.body.handle), user);
+        
         return response.sendStatus(204);
     } catch (error) {
         console.error(error);
@@ -197,6 +219,19 @@ router.post('/change-name', async (request, response) => {
             return response.status(404).json({ error: 'User not found' });
         }
 
+        // Repository Pattern 사용
+        const repo = getUserRepository();
+        const userData = await repo.get(request.body.handle);
+        
+        if (!userData) {
+            console.warn('Change name failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+        
+        userData.name = request.body.name;
+        await repo.save(request.body.handle, userData);
+        
+        // 파일시스템에도 저장 (하이브리드 모드에서 자동 처리되지만, 명시적으로도 저장)
         user.name = request.body.name;
         await storage.setItem(toKey(request.body.handle), user);
 

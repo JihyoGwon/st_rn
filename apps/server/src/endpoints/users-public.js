@@ -6,6 +6,7 @@ import { RateLimiterMemory, RateLimiterRes } from 'rate-limiter-flexible';
 import { getIpFromRequest, getRealIpFromHeader } from '../express-common.js';
 import { color, Cache, getConfigValue } from '../util.js';
 import { KEY_PREFIX, getUserAvatar, toKey, getPasswordHash, getPasswordSalt } from '../users.js';
+import { getUserRepository } from '../repositories/factory.js';
 
 const DISCREET_LOGIN = getConfigValue('enableDiscreetLogin', false, 'boolean');
 const PREFER_REAL_IP_HEADER = getConfigValue('rateLimiting.preferRealIpHeader', false, 'boolean');
@@ -173,6 +174,27 @@ router.post('/recover-step2', async (request, response) => {
             return response.status(403).json({ error: 'Incorrect code' });
         }
 
+        // Repository Pattern 사용
+        const repo = getUserRepository();
+        const userData = await repo.get(user.handle);
+        
+        if (!userData) {
+            console.error('Recover step 2 failed: User not found');
+            return response.status(404).json({ error: 'User not found' });
+        }
+        
+        if (request.body.newPassword) {
+            const salt = getPasswordSalt();
+            userData.passwordHash = getPasswordHash(request.body.newPassword, salt);
+            userData.salt = salt;
+        } else {
+            userData.passwordHash = '';
+            userData.salt = '';
+        }
+        
+        await repo.save(user.handle, userData);
+        
+        // 파일시스템에도 저장 (하이브리드 모드에서 자동 처리되지만, 명시적으로도 저장)
         if (request.body.newPassword) {
             const salt = getPasswordSalt();
             user.password = getPasswordHash(request.body.newPassword, salt);
