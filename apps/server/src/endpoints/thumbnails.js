@@ -9,6 +9,8 @@ import { Jimp, JimpMime } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { getConfigValue, invalidateFirefoxCache } from '../util.js';
+import { getCharacterRepository } from '../repositories/factory.js';
+import { getUserDirectories } from '../users.js';
 
 const thumbnailsEnabled = !!getConfigValue('thumbnails.enabled', true, 'boolean');
 const quality = Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.quality', 95, 'number'))));
@@ -212,10 +214,32 @@ router.get('/', async function (request, response) {
         }
 
         if (!thumbnailsEnabled) {
-            const folder = getOriginalFolder(request.user.directories, type);
+            let folder = getOriginalFolder(request.user.directories, type);
 
             if (folder === undefined) {
                 return response.sendStatus(400);
+            }
+
+            // 아바타 타입이고 파일이 현재 사용자 디렉토리에 없으면 공용 캐릭터인지 확인
+            if (type === 'avatar') {
+                const pathToOriginalFile = path.join(folder, file);
+                if (!fs.existsSync(pathToOriginalFile)) {
+                    // Repository를 사용해서 공용 캐릭터인지 확인
+                    try {
+                        const userId = request.user.profile.handle;
+                        const repo = getCharacterRepository();
+                        const character = await repo.get(file, userId);
+                        
+                        if (character && character.userId !== userId) {
+                            // 공용 캐릭터인 경우, 소유자의 디렉토리에서 찾기
+                            const ownerDirectories = getUserDirectories(character.userId);
+                            folder = getOriginalFolder(ownerDirectories, type);
+                        }
+                    } catch (error) {
+                        // Repository 실패 시 현재 사용자 디렉토리만 사용
+                        console.warn('[Thumbnails] Failed to check shared character:', error);
+                    }
+                }
             }
 
             const pathToOriginalFile = path.join(folder, file);
@@ -231,7 +255,25 @@ router.get('/', async function (request, response) {
             return response.send(originalFile);
         }
 
-        const pathToCachedFile = await generateThumbnail(request.user.directories, type, file);
+        // 아바타 타입인 경우 공용 캐릭터 지원
+        let directories = request.user.directories;
+        if (type === 'avatar') {
+            try {
+                const userId = request.user.profile.handle;
+                const repo = getCharacterRepository();
+                const character = await repo.get(file, userId);
+                
+                if (character && character.userId !== userId) {
+                    // 공용 캐릭터인 경우, 소유자의 디렉토리 사용
+                    directories = getUserDirectories(character.userId);
+                }
+            } catch (error) {
+                // Repository 실패 시 현재 사용자 디렉토리만 사용
+                console.warn('[Thumbnails] Failed to check shared character:', error);
+            }
+        }
+        
+        const pathToCachedFile = await generateThumbnail(directories, type, file);
 
         if (!pathToCachedFile) {
             return response.sendStatus(404);

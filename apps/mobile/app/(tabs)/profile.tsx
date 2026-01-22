@@ -1,12 +1,55 @@
-import { StyleSheet, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
 import { useAppSettingsStore } from '@/store/app-settings-store';
+import { useAuthStore } from '@/store/auth-store';
+import { logout as logoutApi } from '@/lib/api/client';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { settings } = useAppSettingsStore();
+  const { logout } = useAuthStore();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    Alert.alert(
+      '로그아웃',
+      '정말 로그아웃하시겠습니까?',
+      [
+        {
+          text: '취소',
+          style: 'cancel',
+        },
+        {
+          text: '로그아웃',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoggingOut(true);
+            try {
+              // 서버에 로그아웃 요청
+              await logoutApi();
+              // 클라이언트 상태 초기화
+              await logout();
+              // 로그인 화면으로 이동
+              router.replace('/login');
+            } catch (error) {
+              console.error('[Profile] 로그아웃 실패:', error);
+              // 에러가 나도 클라이언트 상태는 초기화
+              await logout();
+              router.replace('/login');
+            } finally {
+              setIsLoggingOut(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -26,6 +69,15 @@ export default function ProfileScreen() {
                 {'\n'}서버는 앱 실행 시 자동으로 감지됩니다.{'\n'}
                 같은 Wi-Fi 네트워크에 연결되어 있어야 합니다.
               </ThemedText>
+            </ThemedView>
+
+            <ThemedView style={styles.logoutSection}>
+              <Button
+                title={isLoggingOut ? '로그아웃 중...' : '로그아웃'}
+                onPress={handleLogout}
+                disabled={isLoggingOut}
+                style={styles.logoutButton}
+              />
             </ThemedView>
           </ThemedView>
         </ScrollView>
@@ -72,6 +124,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.7,
     lineHeight: 20,
+  },
+  logoutSection: {
+    marginTop: 32,
+  },
+  logoutButton: {
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
   },
 });
 

@@ -19,9 +19,10 @@ export class PostgreSQLCharacterRepository {
           create_date,
           chat_size,
           date_last_chat,
-          data_size
+          data_size,
+          is_shared
         FROM characters
-        WHERE user_id = $1
+        WHERE user_id = $1 OR is_shared = true
         ORDER BY date_added DESC
       `
       : `
@@ -36,13 +37,31 @@ export class PostgreSQLCharacterRepository {
           create_date,
           chat_size,
           date_last_chat,
-          data_size
+          data_size,
+          is_shared
         FROM characters
-        WHERE user_id = $1
+        WHERE user_id = $1 OR is_shared = true
         ORDER BY date_added DESC
       `;
 
+    console.log('[PostgreSQLCharacterRepository] getAll query:', {
+      userId,
+      shallow,
+      query: query.substring(0, 100) + '...',
+    });
+
     const result = await pool.query(query, [userId]);
+    
+    console.log('[PostgreSQLCharacterRepository] getAll result:', {
+      totalCount: result.rows.length,
+      userCharacters: result.rows.filter(r => r.user_id === userId).length,
+      sharedCharacters: result.rows.filter(r => r.is_shared === true).length,
+      characters: result.rows.map(r => ({
+        name: r.character_name,
+        userId: r.user_id,
+        isShared: r.is_shared,
+      })),
+    });
 
     return result.rows.map(row => ({
       id: row.id,
@@ -56,6 +75,7 @@ export class PostgreSQLCharacterRepository {
       chatSize: row.chat_size || 0,
       dateLastChat: row.date_last_chat ? new Date(row.date_last_chat).getTime() : undefined,
       dataSize: row.data_size || 0,
+      isShared: row.is_shared || false,
     }));
   }
 
@@ -65,14 +85,16 @@ export class PostgreSQLCharacterRepository {
     // characterId가 UUID인지 파일명인지 확인
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(characterId);
     
+    // 공용 캐릭터도 가져올 수 있도록 수정
+    // 사용자가 소유한 캐릭터이거나 공용 캐릭터(is_shared = true)인 경우
     const query = isUUID
       ? `
         SELECT * FROM characters
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1 AND (user_id = $2 OR is_shared = true)
       `
       : `
         SELECT * FROM characters
-        WHERE avatar = $1 AND user_id = $2
+        WHERE avatar = $1 AND (user_id = $2 OR is_shared = true)
       `;
 
     const result = await pool.query(query, [characterId, userId]);
@@ -94,6 +116,7 @@ export class PostgreSQLCharacterRepository {
       chatSize: row.chat_size || 0,
       dateLastChat: row.date_last_chat ? new Date(row.date_last_chat).getTime() : undefined,
       dataSize: row.data_size || 0,
+      isShared: row.is_shared || false,
     };
   }
 
@@ -108,7 +131,7 @@ export class PostgreSQLCharacterRepository {
       const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(characterId);
 
       if (isUUID && data.id === characterId) {
-        // 업데이트
+        // 업데이트 (is_shared는 명시적으로 업데이트하지 않음 - 기존 값 유지)
         await client.query(`
           UPDATE characters
           SET
@@ -138,6 +161,7 @@ export class PostgreSQLCharacterRepository {
         ]);
       } else {
         // 삽입 (avatar를 기준으로)
+        // 기존 레코드의 is_shared 값을 유지하기 위해 서브쿼리 사용
         await client.query(`
           INSERT INTO characters (
             user_id,
@@ -149,9 +173,10 @@ export class PostgreSQLCharacterRepository {
             create_date,
             chat_size,
             date_last_chat,
-            data_size
+            data_size,
+            is_shared
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE((SELECT is_shared FROM characters WHERE user_id = $1 AND character_name = $2), false))
           ON CONFLICT (user_id, character_name) 
           DO UPDATE SET
             character_data = EXCLUDED.character_data,
@@ -160,6 +185,7 @@ export class PostgreSQLCharacterRepository {
             date_last_chat = EXCLUDED.date_last_chat,
             data_size = EXCLUDED.data_size,
             updated_at = NOW()
+            -- is_shared는 업데이트하지 않음 (기존 값 유지)
         `, [
           userId,
           data.characterName,

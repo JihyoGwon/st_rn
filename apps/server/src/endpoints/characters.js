@@ -1466,10 +1466,12 @@ router.post('/all', async function (request, response) {
     try {
         // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
         const userId = request.user.profile.handle;
+        console.log('[Characters] /all endpoint called for user:', userId);
         const repo = getCharacterRepository();
         
         try {
             const repoCharacters = await repo.getAll(userId, useShallowCharacters);
+            console.log('[Characters] Repository returned', repoCharacters.length, 'characters');
             
             // Repository 반환 형식을 기존 형식으로 변환
             const data = repoCharacters.map(char => {
@@ -1508,11 +1510,11 @@ router.post('/all', async function (request, response) {
         } catch (repoError) {
             // Repository 실패 시 기존 방식으로 폴백 (안전장치)
             console.warn('[Characters] Repository failed, falling back to filesystem:', repoError);
-            const files = fs.readdirSync(request.user.directories.characters);
-            const pngFiles = files.filter(file => file.endsWith('.png'));
-            const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
-            const data = (await Promise.all(processingPromises)).filter(c => c.name);
-            return response.send(data);
+        const files = fs.readdirSync(request.user.directories.characters);
+        const pngFiles = files.filter(file => file.endsWith('.png'));
+        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
+        const data = (await Promise.all(processingPromises)).filter(c => c.name);
+        return response.send(data);
         }
     } catch (err) {
         console.error(err);
@@ -1555,14 +1557,14 @@ router.post('/get', validateAvatarUrlMiddleware, async function (request, respon
         } catch (repoError) {
             // Repository 실패 시 기존 방식으로 폴백 (안전장치)
             console.warn('[Characters] Repository failed, falling back to filesystem:', repoError);
-            const filePath = path.join(request.user.directories.characters, item);
+        const filePath = path.join(request.user.directories.characters, item);
 
-            if (!fs.existsSync(filePath)) {
-                return response.sendStatus(404);
-            }
+        if (!fs.existsSync(filePath)) {
+            return response.sendStatus(404);
+        }
 
-            const data = await processCharacter(item, request.user.directories, { shallow: false });
-            return response.send(data);
+        const data = await processCharacter(item, request.user.directories, { shallow: false });
+        return response.send(data);
         }
     } catch (err) {
         console.error(err);

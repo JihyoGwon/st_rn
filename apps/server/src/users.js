@@ -15,7 +15,7 @@ import _ from 'lodash';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import sanitize from 'sanitize-filename';
 
-import { USER_DIRECTORY_TEMPLATE, DEFAULT_USER, PUBLIC_DIRECTORIES, SETTINGS_FILE, UPLOADS_DIRECTORY } from './constants.js';
+import { USER_DIRECTORY_TEMPLATE, DEFAULT_USER, PUBLIC_DIRECTORIES, SETTINGS_FILE, UPLOADS_DIRECTORY, GLOBAL_DIRECTORY_NAME } from './constants.js';
 import { getConfigValue, color, delay, generateTimestamp, invalidateFirefoxCache } from './util.js';
 import { readSecret, writeSecret } from './endpoints/secrets.js';
 import { getContentOfType } from './endpoints/content-manager.js';
@@ -643,7 +643,35 @@ export async function getAllUserHandles() {
 }
 
 /**
+ * 전역 디렉토리로 사용할 디렉토리 키 목록
+ * 이 디렉토리들은 모든 사용자가 공유함 (admin/웹 UI가 관리)
+ */
+const GLOBAL_DIRECTORY_KEYS = [
+    'worlds',
+    'characters',
+    'backgrounds',
+    'themes',
+    'novelAI_Settings',
+    'koboldAI_Settings',
+    'openAI_Settings',
+    'textGen_Settings',
+    'movingUI',
+    'extensions',
+    'instruct',
+    'context',
+    'quickreplies',
+    'assets',
+    'sysprompt',
+    'reasoning',
+    'thumbnails',
+    'thumbnailsBg',
+    'thumbnailsAvatar',
+    'thumbnailsPersona',
+];
+
+/**
  * Gets the directories listing for the provided user.
+ * 전역 디렉토리는 _global을 사용하고, 사용자별 디렉토리는 사용자 handle을 사용함.
  * @param {string} handle User handle
  * @returns {UserDirectoryList} User directories
  */
@@ -657,9 +685,52 @@ export function getUserDirectories(handle) {
 
     const directories = structuredClone(USER_DIRECTORY_TEMPLATE);
     for (const key in directories) {
-        directories[key] = path.join(globalThis.DATA_ROOT, handle, USER_DIRECTORY_TEMPLATE[key]);
+        if (GLOBAL_DIRECTORY_KEYS.includes(key)) {
+            // 전역 디렉토리: _global 사용
+            directories[key] = path.join(globalThis.DATA_ROOT, GLOBAL_DIRECTORY_NAME, USER_DIRECTORY_TEMPLATE[key]);
+        } else {
+            // 사용자별 디렉토리: 사용자 handle 사용
+            directories[key] = path.join(globalThis.DATA_ROOT, handle, USER_DIRECTORY_TEMPLATE[key]);
+        }
     }
+    
+    // settings.json은 root에 있으므로 별도 처리
+    // root는 사용자별이지만, settings.json 파일 경로는 전역으로 오버라이드
+    const settingsPath = path.join(globalThis.DATA_ROOT, GLOBAL_DIRECTORY_NAME, SETTINGS_FILE);
+    
     DIRECTORIES_CACHE.set(handle, directories);
+    return directories;
+}
+
+/**
+ * 전역 설정 파일 경로 가져오기
+ * @returns {string} 전역 settings.json 경로
+ */
+export function getGlobalSettingsPath() {
+    return path.join(globalThis.DATA_ROOT, GLOBAL_DIRECTORY_NAME, SETTINGS_FILE);
+}
+
+/**
+ * 전역 디렉토리 목록 가져오기 (API 키 등 전역 리소스 읽기용)
+ * @returns {UserDirectoryList} 전역 디렉토리 목록
+ */
+export function getGlobalDirectories() {
+    // 캐시 확인
+    const cacheKey = GLOBAL_DIRECTORY_NAME;
+    if (DIRECTORIES_CACHE.has(cacheKey)) {
+        const cache = DIRECTORIES_CACHE.get(cacheKey);
+        if (cache) {
+            return cache;
+        }
+    }
+
+    // 전역 디렉토리 생성 (모든 경로가 _global을 가리킴)
+    const directories = structuredClone(USER_DIRECTORY_TEMPLATE);
+    for (const key in directories) {
+        directories[key] = path.join(globalThis.DATA_ROOT, GLOBAL_DIRECTORY_NAME, USER_DIRECTORY_TEMPLATE[key]);
+    }
+    
+    DIRECTORIES_CACHE.set(cacheKey, directories);
     return directories;
 }
 
@@ -679,8 +750,8 @@ export async function getUserAvatar(handle) {
         }
 
         // Fallback to reading from files if custom avatar is not set
-        const directory = getUserDirectories(handle);
-        const pathToSettings = path.join(directory.root, SETTINGS_FILE);
+        // 전역 설정 파일 사용
+        const pathToSettings = getGlobalSettingsPath();
         const settings = fs.existsSync(pathToSettings) ? JSON.parse(fs.readFileSync(pathToSettings, 'utf8')) : {};
         const avatarFile = settings?.power_user?.default_persona || settings?.user_avatar;
         if (!avatarFile) {
@@ -880,10 +951,18 @@ export async function setUserDataMiddleware(request, response, next) {
     // If user accounts are enabled, get the user from the session
     let handle = request.session?.handle;
 
-    // If we have the only user and it's not password protected, use it
+    // 디버깅: 세션 정보 로깅
     if (!handle) {
+        console.log('[setUserDataMiddleware] No handle in session:', {
+            hasSession: !!request.session,
+            sessionKeys: request.session ? Object.keys(request.session) : [],
+            path: request.path,
+            method: request.method,
+        });
         return next();
     }
+    
+    console.log('[setUserDataMiddleware] Found handle in session:', handle);
 
     // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
     let user;

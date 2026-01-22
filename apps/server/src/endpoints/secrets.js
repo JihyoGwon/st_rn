@@ -4,6 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { color, getConfigValue, uuidv4 } from '../util.js';
+import { GLOBAL_DIRECTORY_NAME, USER_DIRECTORY_TEMPLATE } from '../constants.js';
 
 export const SECRETS_FILE = 'secrets.json';
 export const SECRET_KEYS = {
@@ -435,12 +436,37 @@ export function deleteSecret(directories, key) {
 }
 
 /**
+ * 전역 디렉토리 목록 생성 (동기)
+ * @returns {import('../users.js').UserDirectoryList} 전역 디렉토리 목록
+ */
+function getGlobalDirectoriesSync() {
+    const directories = {};
+    for (const key in USER_DIRECTORY_TEMPLATE) {
+        directories[key] = path.join(globalThis.DATA_ROOT, GLOBAL_DIRECTORY_NAME, USER_DIRECTORY_TEMPLATE[key]);
+    }
+    return directories;
+}
+
+/**
  * Reads a secret from the secrets file
+ * 전역 디렉토리에서 먼저 읽고, 없으면 사용자 디렉토리에서 읽음
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {string} key Secret key
  * @returns {string} Secret value
  */
 export function readSecret(directories, key) {
+    // 전역 디렉토리에서 먼저 시도
+    try {
+        const globalDirectories = getGlobalDirectoriesSync();
+        const globalSecret = new SecretManager(globalDirectories).readSecret(key, null);
+        if (globalSecret) {
+            return globalSecret;
+        }
+    } catch (error) {
+        // 전역 디렉토리가 없거나 오류가 발생하면 사용자 디렉토리 사용
+    }
+    
+    // 사용자 디렉토리에서 읽기
     return new SecretManager(directories).readSecret(key, null);
 }
 

@@ -9,6 +9,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import _ from 'lodash';
 
 import validateAvatarUrlMiddleware from '../middleware/validateFileName.js';
+import { getGlobalSettingsPath } from '../users.js';
 import {
     getConfigValue,
     humanizedDateTime,
@@ -22,6 +23,7 @@ import {
     readFirstLine,
 } from '../util.js';
 import { parse } from '../character-card-parser.js';
+import { getCharacterRepository } from '../repositories/factory.js';
 import { readWorldInfoFile, getCharacterWorldInfo, getSortedEntries, world_info_insertion_strategy, checkWorldInfo, formatWorldInfo, checkVectorizedWorldInfo, syncWorldInfoVectors, filterByInclusionGroups, getTimedWorldInfo, checkTimedEffects, createNewTimedEffects } from './worldinfo.js';
 
 const isBackupEnabled = !!getConfigValue('backups.chat.enabled', true, 'boolean');
@@ -1006,17 +1008,35 @@ router.post('/recent', async function (request, response) {
         const allChatFiles = [];
 
         const getCharacterChatFiles = async () => {
-            const pngDirents = await fs.promises.readdir(request.user.directories.characters, { withFileTypes: true });
-            const pngFiles = pngDirents.filter(e => e.isFile() && path.extname(e.name) === '.png').map(e => e.name);
-
-            for (const pngFile of pngFiles) {
-                const chatsDirectory = pngFile.replace('.png', '');
-                const pathToChats = path.join(request.user.directories.chats, chatsDirectory);
-                if (!fs.existsSync(pathToChats)) {
-                    continue;
-                }
-                const pathStats = await fs.promises.stat(pathToChats);
-                if (pathStats.isDirectory()) {
+            const userId = request.user.profile.handle;
+            const repo = getCharacterRepository();
+            
+            // Repository를 사용해서 사용자가 접근 가능한 모든 캐릭터 가져오기 (공용 캐릭터 포함)
+            const characters = await repo.getAll(userId, true);
+            const characterAvatars = new Set(characters.map(c => c.avatar));
+            
+            // 사용자의 채팅 디렉토리에서 채팅 파일 찾기
+            // 공용 캐릭터와의 채팅도 사용자의 디렉토리에 저장되므로 여기서 찾을 수 있음
+            if (fs.existsSync(request.user.directories.chats)) {
+                const chatDirs = await fs.promises.readdir(request.user.directories.chats, { withFileTypes: true });
+                
+                for (const chatDir of chatDirs) {
+                    if (!chatDir.isDirectory()) {
+                        continue;
+                    }
+                    
+                    // 캐릭터 파일명으로 변환 (디렉토리명 + .png)
+                    const pngFile = `${chatDir.name}.png`;
+                    
+                    // Repository에서 찾은 캐릭터이거나, 파일시스템에 있는 캐릭터인지 확인
+                    const isAccessibleCharacter = characterAvatars.has(pngFile) || 
+                        fs.existsSync(path.join(request.user.directories.characters, pngFile));
+                    
+                    if (!isAccessibleCharacter) {
+                        continue;
+                    }
+                    
+                    const pathToChats = path.join(request.user.directories.chats, chatDir.name);
                     const chatFiles = await fs.promises.readdir(pathToChats);
                     const jsonlFiles = chatFiles.filter(file => path.extname(file) === '.jsonl');
 
@@ -1114,28 +1134,48 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             });
         }
 
-        // Load character data
+        // Load character data (Repository 사용 - 공용 캐릭터 지원)
+        const userId = request.user.profile.handle;
+        const repo = getCharacterRepository();
         const characterFileName = character_id.endsWith('.png') ? character_id : `${character_id}.png`;
-        const characterFilePath = path.join(request.user.directories.characters, characterFileName);
         
-        if (!fs.existsSync(characterFilePath)) {
+        // Repository에서 캐릭터 가져오기 (공용 캐릭터 포함)
+        let character = await repo.get(characterFileName, userId);
+        
+        // Repository에서 찾지 못하면 파일시스템에서 찾기 (하이브리드 모드 지원)
+        let characterData = null;
+        let characterJsonData = null;
+        
+        if (character) {
+            // Repository에서 찾은 경우
+            characterJsonData = character.jsonData;
+            characterData = character.characterData;
+        } else {
+            // 파일시스템에서 찾기
+            const characterFilePath = path.join(request.user.directories.characters, characterFileName);
+            if (fs.existsSync(characterFilePath)) {
+                characterJsonData = await parse(characterFilePath, 'png');
+                if (characterJsonData) {
+                    characterData = tryParse(characterJsonData);
+                }
+            }
+        }
+        
+        if (!characterData) {
             return response.status(404).json({
                 success: false,
                 error: 'Character not found',
                 code: 'CHARACTER_NOT_FOUND'
             });
         }
-
-        const characterJsonData = await parse(characterFilePath, 'png');
-        if (!characterJsonData) {
+        
+        if (!characterData.data) {
             return response.status(500).json({
                 success: false,
-                error: 'Failed to parse character file',
-                code: 'CHARACTER_PARSE_ERROR'
+                error: 'Invalid character data format',
+                code: 'INVALID_CHARACTER_FORMAT'
             });
         }
-
-        const characterData = tryParse(characterJsonData);
         if (!characterData || !characterData.data) {
             return response.status(500).json({
                 success: false,
@@ -1152,10 +1192,11 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
         const charFirstMes = characterData.data.first_mes || '';
         const alternateGreetings = characterData.data.alternate_greetings || [];
         // Load user settings to get name1 and extensionSettings (needed for World Info scanning)
+        // 전역 설정 파일 사용
         let name1 = 'You';
         let extensionSettings = {};
         try {
-            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            const pathToSettings = getGlobalSettingsPath();
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
@@ -1188,7 +1229,8 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
             let globalMatchWholeWords = false;
             let globalScanDepth = 100; // Default scan depth
             
-            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            // 전역 설정 파일 사용
+            const pathToSettings = getGlobalSettingsPath();
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
@@ -1452,9 +1494,11 @@ router.post('/prepare-messages', validateAvatarUrlMiddleware, async function (re
 
         // Load user settings to get oai_settings
         // (name1 and extensionSettings are already loaded above for World Info scanning)
+        // 전역 설정 파일 사용
         let oaiSettings = {};
         try {
-            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            const { getGlobalSettingsPath } = await import('../users.js');
+            const pathToSettings = getGlobalSettingsPath();
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
@@ -1820,11 +1864,34 @@ router.post('/summarize', validateAvatarUrlMiddleware, async function (request, 
             });
         }
         
-        // Load character data
+        // Load character data (Repository 사용 - 공용 캐릭터 지원)
+        const userId = request.user.profile.handle;
+        const repo = getCharacterRepository();
         const characterFileName = character_id.endsWith('.png') ? character_id : `${character_id}.png`;
-        const characterFilePath = path.join(request.user.directories.characters, characterFileName);
         
-        if (!fs.existsSync(characterFilePath)) {
+        // Repository에서 캐릭터 가져오기 (공용 캐릭터 포함)
+        let character = await repo.get(characterFileName, userId);
+        
+        // Repository에서 찾지 못하면 파일시스템에서 찾기 (하이브리드 모드 지원)
+        let characterData = null;
+        let characterJsonData = null;
+        
+        if (character) {
+            // Repository에서 찾은 경우
+            characterJsonData = character.jsonData;
+            characterData = character.characterData;
+        } else {
+            // 파일시스템에서 찾기
+            const characterFilePath = path.join(request.user.directories.characters, characterFileName);
+            if (fs.existsSync(characterFilePath)) {
+                characterJsonData = await parse(characterFilePath, 'png');
+                if (characterJsonData) {
+                    characterData = tryParse(characterJsonData);
+                }
+            }
+        }
+        
+        if (!characterData) {
             return response.status(404).json({
                 success: false,
                 error: 'Character not found',
@@ -1832,17 +1899,7 @@ router.post('/summarize', validateAvatarUrlMiddleware, async function (request, 
             });
         }
         
-        const characterJsonData = await parse(characterFilePath, 'png');
-        if (!characterJsonData) {
-            return response.status(500).json({
-                success: false,
-                error: 'Failed to parse character file',
-                code: 'CHARACTER_PARSE_ERROR'
-            });
-        }
-        
-        const characterData = tryParse(characterJsonData);
-        if (!characterData || !characterData.data) {
+        if (!characterData.data) {
             return response.status(500).json({
                 success: false,
                 error: 'Invalid character data format',
@@ -1853,10 +1910,12 @@ router.post('/summarize', validateAvatarUrlMiddleware, async function (request, 
         const name2 = characterData.data.name || 'Character';
         
         // Load user settings
+        // 전역 설정 파일 사용
         let name1 = 'You';
         let extensionSettings = {};
         try {
-            const pathToSettings = path.join(request.user.directories.root, 'settings.json');
+            const { getGlobalSettingsPath } = await import('../users.js');
+            const pathToSettings = getGlobalSettingsPath();
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);
@@ -1982,9 +2041,11 @@ async function generateSummaryForChat(directories, characterFileName, chatId, me
             .replace(/\{\{words\}\}/g, String(memorySettings.promptWords || 200));
         
         // Load server settings for chat completion API
+        // 전역 설정 파일 사용
         let serverSettings = {};
         try {
-            const pathToSettings = path.join(directories.root, 'settings.json');
+            const { getGlobalSettingsPath } = await import('../users.js');
+            const pathToSettings = getGlobalSettingsPath();
             if (fs.existsSync(pathToSettings)) {
                 const settingsContent = fs.readFileSync(pathToSettings, 'utf8');
                 const settings = tryParse(settingsContent);

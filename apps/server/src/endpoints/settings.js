@@ -7,7 +7,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { SETTINGS_FILE } from '../constants.js';
 import { getConfigValue, generateTimestamp, removeOldBackups } from '../util.js';
-import { getAllUserHandles, getUserDirectories } from '../users.js';
+import { getAllUserHandles, getUserDirectories, getGlobalSettingsPath } from '../users.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
 
 const ENABLE_EXTENSIONS = !!getConfigValue('extensions.enabled', true, 'boolean');
@@ -137,7 +137,8 @@ function backupUserSettings(handle, preventDuplicates) {
     }
 
     const backupFile = path.join(userDirectories.backups, `${getSettingsBackupFilePrefix(handle)}${generateTimestamp()}.json`);
-    const sourceFile = path.join(userDirectories.root, SETTINGS_FILE);
+    // 전역 설정 파일을 백업
+    const sourceFile = getGlobalSettingsPath();
 
     if (preventDuplicates && isDuplicateBackup(handle, sourceFile)) {
         return;
@@ -201,7 +202,8 @@ export const router = express.Router();
 
 router.post('/save', function (request, response) {
     try {
-        const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);
+        // 전역 설정 파일에 저장
+        const pathToSettings = getGlobalSettingsPath();
         writeFileAtomicSync(pathToSettings, JSON.stringify(request.body, null, 4), 'utf8');
         triggerAutoSave(request.user.profile.handle);
         response.send({ result: 'ok' });
@@ -215,7 +217,8 @@ router.post('/save', function (request, response) {
 router.post('/get', (request, response) => {
     let settings;
     try {
-        const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);
+        // 전역 설정 파일 사용
+        const pathToSettings = getGlobalSettingsPath();
         settings = fs.readFileSync(pathToSettings, 'utf8');
     } catch (e) {
         return response.sendStatus(500);
@@ -352,7 +355,8 @@ router.post('/restore-snapshot', getFileNameValidationFunction('name'), async (r
             return response.sendStatus(404);
         }
 
-        const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);
+        // 전역 설정 파일에 복원
+        const pathToSettings = getGlobalSettingsPath();
         fs.rmSync(pathToSettings, { force: true });
         fs.copyFileSync(snapshotPath, pathToSettings);
 

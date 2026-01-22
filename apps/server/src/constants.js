@@ -9,6 +9,11 @@ export const PUBLIC_DIRECTORIES = {
 export const SETTINGS_FILE = 'settings.json';
 
 /**
+ * 전역 디렉토리 이름 (모든 사용자가 공유하는 설정/리소스)
+ */
+export const GLOBAL_DIRECTORY_NAME = '_global';
+
+/**
  * @type {import('./users.js').UserDirectoryList}
  * @readonly
  * @enum {string}

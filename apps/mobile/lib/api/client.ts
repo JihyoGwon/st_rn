@@ -14,6 +14,7 @@ import type {
   ChatCompletionResponse,
   RecentChat,
 } from '@/types/api';
+import type { UserInfo } from '@/store/auth-store';
 
 /**
  * 서버 URL 가져오기
@@ -77,6 +78,7 @@ function fetchWithTimeout(
  */
 class ApiClient {
   private csrfToken: string | null = null;
+  private sessionCookie: string | null = null;
   private lastSettingsCheck: number = 0;
   private settingsCheckInterval = SETTINGS_SYNC_INTERVAL;
   
@@ -99,14 +101,46 @@ class ApiClient {
 
     try {
       const baseUrl = getBaseUrl();
+      const headers: Record<string, string> = {};
+      
+      // 세션 쿠키가 있으면 명시적으로 포함
+      if (this.sessionCookie) {
+        headers['Cookie'] = this.sessionCookie;
+      }
+      
       const response = await fetchWithTimeout(
         `${baseUrl}/csrf-token`,
         {
           method: 'GET',
           credentials: 'include', // 쿠키 포함
+          headers: Object.keys(headers).length > 0 ? headers : undefined,
         },
         TIMEOUTS.CSRF_TOKEN
       );
+      
+      // 응답에서 쿠키 추출 시도
+      try {
+        const setCookieHeader = response.headers.get('set-cookie');
+        if (setCookieHeader) {
+          // Set-Cookie 헤더 파싱
+          const cookies = setCookieHeader.split(',').map(c => c.trim());
+          // 세션 쿠키 찾기 (st_session 또는 connect.sid)
+          const sessionCookie = cookies.find(c => 
+            c.includes('st_session') || 
+            c.includes('connect.sid') ||
+            c.match(/^[^=]+=/)
+          );
+          if (sessionCookie) {
+            // 세미콜론 앞부분만 추출 (속성 제거)
+            this.sessionCookie = sessionCookie.split(';')[0];
+            console.log('[API] 세션 쿠키 저장됨');
+          }
+        }
+      } catch (cookieError) {
+        // 쿠키 추출 실패는 무시
+        console.log('[API] 쿠키 추출 실패 (정상일 수 있음)');
+      }
+      
       console.log('[API] CSRF 토큰 응답 상태:', response.status, response.statusText);
       if (!response.ok) {
         throw new Error(`CSRF 토큰 요청 실패: ${response.status}`);
@@ -245,19 +279,44 @@ class ApiClient {
     const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`;
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': token,
+        ...(options.headers as Record<string, string> || {}),
+      };
+      
+      // 세션 쿠키가 있으면 명시적으로 포함
+      if (this.sessionCookie) {
+        headers['Cookie'] = this.sessionCookie;
+      }
+      
       const response = await fetchWithTimeout(
         url,
         {
           ...options,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': token,
-            ...options.headers,
-          },
+          headers,
           credentials: 'include',
         },
         TIMEOUTS.API_REQUEST
       );
+      
+      // 응답에서 쿠키 업데이트 시도
+      try {
+        const setCookieHeader = response.headers.get('set-cookie');
+        if (setCookieHeader) {
+          const cookies = setCookieHeader.split(',').map(c => c.trim());
+          const sessionCookie = cookies.find(c => 
+            c.includes('st_session') || 
+            c.includes('connect.sid') ||
+            c.match(/^[^=]+=/)
+          );
+          if (sessionCookie) {
+            this.sessionCookie = sessionCookie.split(';')[0];
+          }
+        }
+      } catch (cookieError) {
+        // 쿠키 추출 실패는 무시
+      }
 
       if (!response.ok) {
         // 에러 응답 본문 확인
@@ -448,3 +507,197 @@ class ApiClient {
 // 싱글톤 인스턴스
 export const apiClient = new ApiClient();
 
+/**
+ * 인증 관련 API 함수들
+ * 로그인 방식별로 함수를 분리하여 나중에 소셜 로그인 추가 시 확장 가능
+ */
+
+/**
+ * 자격증명으로 로그인 (핸들/비밀번호)
+ * @param handle 사용자 핸들
+ * @param password 비밀번호
+ * @returns 사용자 정보
+ */
+export async function loginWithCredentials(handle: string, password: string): Promise<UserInfo> {
+  try {
+    const baseUrl = getBaseUrl();
+    
+    // CSRF 토큰 가져오기 (로그인 전에도 필요)
+    // 이 과정에서 세션 쿠키도 자동으로 저장됨
+    const csrfToken = await apiClient.getCsrfToken();
+    
+    // 세션 쿠키 가져오기 (ApiClient의 private 필드에 접근)
+    // @ts-expect-error - private 필드 접근
+    const sessionCookie = apiClient.sessionCookie;
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken || '',
+    };
+    
+    // 세션 쿠키가 있으면 명시적으로 포함
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+    
+    const response = await fetchWithTimeout(
+      `${baseUrl}/api/users/login`,
+      {
+        method: 'POST',
+        headers,
+        credentials: 'include', // 쿠키 포함
+        body: JSON.stringify({
+          handle,
+          password,
+        }),
+      },
+      TIMEOUTS.API_REQUEST
+    );
+    
+    // 로그인 성공 시 응답에서 쿠키 업데이트
+    try {
+      const setCookieHeader = response.headers.get('set-cookie');
+      if (setCookieHeader) {
+        const cookies = setCookieHeader.split(',').map(c => c.trim());
+        const sessionCookie = cookies.find(c => 
+          c.includes('st_session') || 
+          c.includes('connect.sid') ||
+          c.match(/^[^=]+=/)
+        );
+        if (sessionCookie) {
+          // @ts-expect-error - private 필드 접근
+          apiClient.sessionCookie = sessionCookie.split(';')[0];
+          console.log('[API] 로그인 후 세션 쿠키 저장됨');
+        }
+      }
+    } catch (cookieError) {
+      // 쿠키 추출 실패는 무시
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: '로그인 실패' }));
+      throw new Error(errorData.error || `로그인 실패: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // 사용자 정보 가져오기 (세션 쿠키 포함)
+    // @ts-expect-error - private 필드 접근
+    const updatedSessionCookie = apiClient.sessionCookie;
+    const meHeaders: Record<string, string> = {};
+    if (updatedSessionCookie) {
+      meHeaders['Cookie'] = updatedSessionCookie;
+    }
+    
+    const userInfoResponse = await fetchWithTimeout(
+      `${baseUrl}/api/users/me`,
+      {
+        method: 'GET',
+        headers: Object.keys(meHeaders).length > 0 ? meHeaders : undefined,
+        credentials: 'include',
+      },
+      TIMEOUTS.API_REQUEST
+    );
+
+    if (!userInfoResponse.ok) {
+      throw new Error('사용자 정보를 가져올 수 없습니다');
+    }
+
+    const userData = await userInfoResponse.json();
+    
+    return {
+      handle: userData.handle,
+      name: userData.name,
+      admin: userData.admin || false,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : '로그인에 실패했습니다';
+    console.error('[API] 로그인 실패:', error);
+    throw new Error(errorMessage);
+  }
+}
+
+/**
+ * 로그아웃
+ */
+export async function logout(): Promise<void> {
+  try {
+    const baseUrl = getBaseUrl();
+    // @ts-expect-error - private 필드 접근
+    const sessionCookie = apiClient.sessionCookie;
+    const headers: Record<string, string> = {};
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+    
+    await fetchWithTimeout(
+      `${baseUrl}/api/users/logout`,
+      {
+        method: 'POST',
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+        credentials: 'include',
+      },
+      TIMEOUTS.API_REQUEST
+    );
+  } catch (error) {
+    console.error('[API] 로그아웃 실패:', error);
+    // 로그아웃 실패해도 계속 진행 (클라이언트 상태는 초기화됨)
+  }
+}
+
+/**
+ * 현재 사용자 정보 가져오기
+ * @returns 사용자 정보 또는 null
+ */
+export async function getCurrentUser(): Promise<UserInfo | null> {
+  try {
+    const baseUrl = getBaseUrl();
+    // @ts-expect-error - private 필드 접근
+    const sessionCookie = apiClient.sessionCookie;
+    const headers: Record<string, string> = {};
+    if (sessionCookie) {
+      headers['Cookie'] = sessionCookie;
+    }
+    
+    const response = await fetchWithTimeout(
+      `${baseUrl}/api/users/me`,
+      {
+        method: 'GET',
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+        credentials: 'include',
+      },
+      TIMEOUTS.API_REQUEST
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const userData = await response.json();
+    return {
+      handle: userData.handle,
+      name: userData.name,
+      admin: userData.admin || false,
+    };
+  } catch (error) {
+    // 서버 URL이 없거나 네트워크 오류인 경우 조용히 처리
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isNetworkErr = error instanceof Error ? isNetworkError(error) : false;
+    
+    if (errorMessage.includes('서버가 연결되지 않았습니다') || 
+        errorMessage.includes('Network request failed') ||
+        isNetworkErr) {
+      // 네트워크 오류는 조용히 처리 (로그만 출력)
+      console.log('[API] 서버 연결 불가, 사용자 정보 확인 건너뜀');
+    } else {
+      // 다른 오류는 로그 출력
+      console.error('[API] 사용자 정보 가져오기 실패:', error);
+    }
+    return null;
+  }
+}
+
+// TODO: 나중에 소셜 로그인 추가 시 여기에 함수 추가
+// export async function loginWithGoogle(): Promise<UserInfo> { ... }
+// export async function loginWithApple(): Promise<UserInfo> { ... }
+// export async function loginWithKakao(): Promise<UserInfo> { ... }
