@@ -33,13 +33,16 @@ export const CharacterCard = ({ character, onPress }: CharacterCardProps) => {
 
   // 아바타 이미지 URL (웹과 동일한 thumbnail 엔드포인트 사용)
   // 서버 URL이 없거나 avatar가 없으면 기본 이미지만 표시
+  // 캐시 버스터: date_added를 사용하여 이미지 변경 시 새로 로드되도록 함
   const getAvatarUrl = () => {
     if (!settings.serverUrl || !character.avatar || character.avatar === 'none') {
       return null; // 기본 이미지 사용
     }
     try {
       const url = new URL(settings.serverUrl);
-      return `${url.origin}/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}`;
+      // date_added를 캐시 버스터로 사용 (이미지 변경 시 새로 로드)
+      const cacheBuster = character.date_added ? `&t=${character.date_added}` : `&t=${Date.now()}`;
+      return `${url.origin}/thumbnail?type=avatar&file=${encodeURIComponent(character.avatar)}${cacheBuster}`;
     } catch {
       return null; // URL 파싱 실패 시 기본 이미지 사용
     }
@@ -60,6 +63,7 @@ export const CharacterCard = ({ character, onPress }: CharacterCardProps) => {
       onPress={handlePress}
     >
       <Image
+        key={`${character.avatar}-${character.date_added}`}
         source={avatarUrl ? { uri: avatarUrl } : require('@/assets/images/icon.png')}
         style={styles.avatar}
         defaultSource={require('@/assets/images/icon.png')}

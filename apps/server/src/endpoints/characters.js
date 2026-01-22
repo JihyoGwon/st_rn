@@ -1238,6 +1238,8 @@ router.post('/edit-avatar', validateAvatarUrlMiddleware, async function (request
 
         const crop = tryParse(request.query.crop);
         const fileName = request.body.avatar_url.replace('.png', '');
+        
+        // 1. 파일시스템에 저장 (기존 방식)
         await writeCharacterData(uploadPath, data, fileName, request, crop);
 
         // Remove uploaded temp file
@@ -1246,6 +1248,46 @@ router.post('/edit-avatar', validateAvatarUrlMiddleware, async function (request
         // Reset images caches
         cacheBuster.bust(request, response);
         invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
+
+        // 2. Repository를 사용해서 DB에도 저장 (하이브리드 모드)
+        try {
+            const userId = request.user.profile.handle;
+            const repo = getCharacterRepository();
+            console.log('[Characters] Saving avatar update to repository:', { userId, avatarUrl: request.body.avatar_url });
+            
+            // 파일에서 읽어서 Repository 형식으로 변환
+            const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+            if (fs.existsSync(avatarPath)) {
+                const imgData = await readCharacterData(avatarPath);
+                if (imgData) {
+                    const jsonObject = JSON.parse(imgData);
+                    const charStat = fs.statSync(avatarPath);
+                    const chatsDirectory = path.join(request.user.directories.chats, fileName);
+                    const { chatSize, dateLastChat } = calculateChatSize(chatsDirectory);
+                    
+                    const characterData = {
+                        id: request.body.avatar_url,
+                        userId: userId,
+                        characterName: jsonObject.data?.name || jsonObject.name || fileName,
+                        characterData: jsonObject,
+                        avatar: request.body.avatar_url,
+                        jsonData: imgData,
+                        // 아바타 변경 시 파일 수정 시간을 사용하여 캐시 버스터로 활용
+                        dateAdded: Math.floor(charStat.mtimeMs), // mtimeMs 사용 (아바타 변경 시 갱신됨)
+                        createDate: jsonObject.create_date || new Date(charStat.ctimeMs).toISOString(),
+                        chatSize: chatSize || 0,
+                        dateLastChat: dateLastChat ? Math.floor(dateLastChat) : undefined, // 정수로 변환
+                        dataSize: JSON.stringify(jsonObject).length,
+                    };
+                    
+                    await repo.save(request.body.avatar_url, userId, characterData);
+                    console.log('[Characters] Successfully saved avatar update to repository');
+                }
+            }
+        } catch (repoError) {
+            // Repository 저장 실패는 경고만 (파일시스템은 이미 저장됨)
+            console.warn('[Characters] Failed to save avatar update to repository (non-critical):', repoError);
+        }
 
         return response.sendStatus(200);
     } catch (err) {
