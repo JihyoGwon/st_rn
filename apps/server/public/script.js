@@ -3458,8 +3458,10 @@ class StreamingProcessor {
             this.sendTextarea.value = '';
             this.sendTextarea.dispatchEvent(new Event('input', { bubbles: true }));
         } else {
+            console.debug('[onStartStreaming] Before saveReply:', { type: this.type, text: text?.substring(0, 50), textLength: text?.length });
             await saveReply({ type: this.type, getMessage: text, fromStreaming: true });
             messageId = chat.length - 1;
+            console.debug('[onStartStreaming] After saveReply:', { messageId, chatLength: chat.length });
             await this.#checkDomElements(messageId, continueOnReasoning);
             this.markUIGenStarted();
         }
@@ -4387,7 +4389,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
     console.log(`Core/all messages: ${coreChat.length}/${chat.length}`);
 
-    if ((promptBias && !isUserPromptBias) || power_user.always_force_name2 || main_api == 'novel') {
+    if ((promptBias && !isUserPromptBias) || main_api == 'novel') {
         force_name2 = true;
     }
 
@@ -5264,6 +5266,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
         //const getData = await response.json();
         let getMessage = extractMessageFromData(data);
+        console.debug('[onSuccess] After extractMessageFromData:', { getMessage: getMessage?.substring(0, 50), getMessageLength: getMessage?.length, hasData: !!data, hasChoices: !!data?.choices });
         let title = extractTitleFromData(data);
         let reasoning = extractReasoningFromData(data);
         let imageUrls = extractImagesFromData(data);
@@ -5310,12 +5313,14 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
         }
         else {
             // Without streaming we'll be having a full message on continuation. Treat it as a last chunk.
+            console.debug('[onSuccess] Before saveReply:', { type, getMessage: getMessage?.substring(0, 50), getMessageLength: getMessage?.length });
             if (originalType !== 'continue') {
                 ({ type, getMessage } = await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature }));
             }
             else {
                 ({ type, getMessage } = await saveReply({ type: 'appendFinal', getMessage, title, swipes, reasoning, imageUrls, reasoningSignature }));
             }
+            console.debug('[onSuccess] After saveReply:', { type, getMessage: getMessage?.substring(0, 50), getMessageLength: getMessage?.length });
 
             // This relies on `saveReply` having been called to add the message to the chat, so it must be last.
             parseAndSaveLogprobs(data, continue_mag);
@@ -6028,7 +6033,16 @@ export function extractMessageFromData(data, activeApi = null) {
             case 'novel':
                 return data.output;
             case 'openai':
-                return data?.content?.find(p => p.type === 'text')?.text ?? data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? data?.text ?? data?.message?.content?.[0]?.text ?? data?.message?.tool_plan ?? '';
+                const result = data?.content?.find(p => p.type === 'text')?.text ?? data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.text ?? data?.text ?? data?.message?.content?.[0]?.text ?? data?.message?.tool_plan ?? '';
+                if (!result) {
+                    console.warn('[extractMessageFromData] No message extracted from data:', {
+                        hasContent: !!data?.content,
+                        hasChoices: !!data?.choices,
+                        choicesLength: data?.choices?.length,
+                        firstChoiceContent: data?.choices?.[0]?.message?.content?.substring(0, 50)
+                    });
+                }
+                return result;
             default:
                 return '';
         }
@@ -6232,6 +6246,7 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
             // If the message starts with the wrong name, delete the entire response
             let startIndex = getMessage.indexOf(`${wrongName}:`);
             if (startIndex === 0) {
+                console.warn(`[cleanUpMessage] Message deleted: started with wrong name "${wrongName}". Original message: "${getMessage.substring(0, 50)}..."`);
                 getMessage = '';
                 console.debug(`Message started with the wrong name: "${wrongName}" - response was deleted.`);
             }
@@ -6316,6 +6331,11 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
 
     if (power_user.trim_spaces && !PromptReasoning.getLatestPrefix()) {
         getMessage = getMessage.trim();
+    }
+
+    // Debug: Log if message becomes empty
+    if (!getMessage || getMessage.trim().length === 0) {
+        console.warn('[cleanUpMessage] Message became empty after cleanup. Original input might have been empty or filtered out.');
     }
 
     return getMessage;

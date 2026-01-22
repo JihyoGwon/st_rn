@@ -127,7 +127,6 @@ export const power_user = {
     pin_examples: false,
     strip_examples: false,
     trim_sentences: false,
-    always_force_name2: false,
     user_prompt_bias: '',
     show_user_prompt_bias: true,
     auto_continue: {
@@ -366,7 +365,6 @@ const contextControls = [
     { id: 'context_story_string_role', property: 'story_string_role', isCheckbox: false, isGlobalSetting: false, defaultValue: extension_prompt_roles.SYSTEM },
 
     // Existing power user settings
-    { id: 'always-force-name2-checkbox', property: 'always_force_name2', isCheckbox: true, isGlobalSetting: true, defaultValue: true },
     { id: 'trim_sentences_checkbox', property: 'trim_sentences', isCheckbox: true, isGlobalSetting: true, defaultValue: false },
     { id: 'single_line', property: 'single_line', isCheckbox: true, isGlobalSetting: true, defaultValue: false },
 ];
@@ -1684,7 +1682,6 @@ export async function loadPowerUserSettings(settings, data) {
     $('#confirm_message_delete').prop('checked', power_user.confirm_message_delete !== undefined ? !!power_user.confirm_message_delete : true);
     $('#spoiler_free_mode').prop('checked', power_user.spoiler_free_mode);
     $('#collapse-newlines-checkbox').prop('checked', power_user.collapse_newlines);
-    $('#always-force-name2-checkbox').prop('checked', power_user.always_force_name2);
     $('#trim_sentences_checkbox').prop('checked', power_user.trim_sentences);
     $('#disable_group_trimming').prop('checked', power_user.disable_group_trimming);
     $('#markdown_escape_strings').val(power_user.markdown_escape_strings);
@@ -3413,11 +3410,6 @@ jQuery(() => {
     });
 
     $('#bind_model_templates').on('change', updateBindModelTemplatesState);
-
-    $('#always-force-name2-checkbox').on('change', function () {
-        power_user.always_force_name2 = !!$(this).prop('checked');
-        saveSettingsDebounced();
-    });
 
     $('#markdown_escape_strings').on('input', function () {
         power_user.markdown_escape_strings = String($(this).val());
