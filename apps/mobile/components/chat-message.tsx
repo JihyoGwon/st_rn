@@ -9,6 +9,7 @@ import { formatChatTime } from '@/utils/date-format';
 import { useCharacterStore } from '@/store/character-store';
 import { useAppSettingsStore } from '@/store/app-settings-store';
 import type { ChatMessage } from '@/store/chat-store';
+import { getCharacterAvatarUrl, getAvatarImageKey } from '@/utils/avatar-utils';
 
 interface ChatMessageProps {
   message: ChatMessage;
@@ -26,26 +27,15 @@ export const ChatMessageComponent = ({ message }: ChatMessageProps) => {
     : botBackgroundColor;
   const textColor = isUser ? '#fff' : Colors[colorScheme ?? 'light'].text;
 
-  // 봇 메시지의 경우 아바타 URL 생성 (웹과 동일한 thumbnail 엔드포인트 사용)
-  const getAvatarUrl = () => {
-    if (isUser || !selectedCharacter || !settings.serverUrl || !selectedCharacter.avatar || selectedCharacter.avatar === 'none') {
-      return null;
-    }
-    try {
-      const url = new URL(settings.serverUrl);
-      return `${url.origin}/thumbnail?type=avatar&file=${encodeURIComponent(selectedCharacter.avatar)}`;
-    } catch {
-      return null;
-    }
-  };
-
-  const avatarUrl = getAvatarUrl();
+  // 봇 메시지의 경우 아바타 URL 생성 (공통 함수 사용)
+  const avatarUrl = isUser ? null : getCharacterAvatarUrl(selectedCharacter, settings.serverUrl);
 
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.botContainer]}>
       {!isUser && (
         <View style={styles.avatarContainer}>
           <Image
+            key={getAvatarImageKey(selectedCharacter)}
             source={avatarUrl ? { uri: avatarUrl } : require('@/assets/images/icon.png')}
             style={styles.avatar}
             defaultSource={require('@/assets/images/icon.png')}
