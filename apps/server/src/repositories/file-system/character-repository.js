@@ -77,10 +77,10 @@ export class FileSystemCharacterRepository {
         characterData: jsonObject,
         avatar: characterId,
         jsonData: imgData,
-        dateAdded: charStat.ctimeMs,
+        dateAdded: Math.floor(charStat.ctimeMs), // 정수로 변환 (BIGINT용)
         createDate: jsonObject.create_date || new Date(charStat.ctimeMs).toISOString(),
         chatSize,
-        dateLastChat,
+        dateLastChat: dateLastChat ? Math.floor(dateLastChat) : undefined, // 정수로 변환
         dataSize: JSON.stringify(jsonObject).length,
       };
     } catch (error) {
