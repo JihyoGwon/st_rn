@@ -25,6 +25,7 @@ import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import cacheBuster from '../middleware/cacheBuster.js';
+import { getCharacterRepository } from '../repositories/factory.js';
 
 // With 100 MB limit it would take roughly 3000 characters to reach this limit
 const memoryCacheCapacity = getConfigValue('performance.memoryCacheCapacity', '100mb');
@@ -178,7 +179,7 @@ function getCacheKey(inputFile) {
  * @param {string} inputFormat - 'png'
  * @returns {Promise<string | undefined>} - Character card data
  */
-async function readCharacterData(inputFile, inputFormat = 'png') {
+export async function readCharacterData(inputFile, inputFormat = 'png') {
     const cacheKey = getCacheKey(inputFile);
     if (memoryCache.has(cacheKey)) {
         return memoryCache.get(cacheKey);
@@ -1031,16 +1032,54 @@ router.post('/create', getFileNameValidationFunction('file_name'), async functio
 
         if (!fs.existsSync(chatsPath)) fs.mkdirSync(chatsPath);
 
+        // 1. 파일시스템에 저장 (기존 방식)
         if (!request.file) {
             await writeCharacterData(DEFAULT_AVATAR_PATH, char, internalName, request);
-            return response.send(avatarName);
         } else {
             const crop = tryParse(request.query.crop);
             const uploadPath = path.join(request.file.destination, request.file.filename);
             await writeCharacterData(uploadPath, char, internalName, request, crop);
             fs.unlinkSync(uploadPath);
-            return response.send(avatarName);
         }
+
+        // 2. Repository를 사용해서 DB에도 저장 (하이브리드 모드)
+        try {
+            const userId = request.user.profile.handle;
+            const repo = getCharacterRepository();
+            
+            // 파일에서 읽어서 Repository 형식으로 변환
+            const avatarPath = path.join(request.user.directories.characters, avatarName);
+            if (fs.existsSync(avatarPath)) {
+                const imgData = await readCharacterData(avatarPath);
+                if (imgData) {
+                    const jsonObject = JSON.parse(imgData);
+                    const charStat = fs.statSync(avatarPath);
+                    const chatsDirectory = path.join(request.user.directories.chats, internalName);
+                    const { chatSize, dateLastChat } = calculateChatSize(chatsDirectory);
+                    
+                    const characterData = {
+                        id: avatarName,
+                        userId: userId,
+                        characterName: jsonObject.data?.name || jsonObject.name || internalName,
+                        characterData: jsonObject,
+                        avatar: avatarName,
+                        jsonData: imgData,
+                        dateAdded: Math.floor(charStat.ctimeMs), // 정수로 변환 (BIGINT용)
+                        createDate: jsonObject.create_date || new Date(charStat.ctimeMs).toISOString(),
+                        chatSize: chatSize || 0,
+                        dateLastChat: dateLastChat ? Math.floor(dateLastChat) : undefined, // 정수로 변환
+                        dataSize: JSON.stringify(jsonObject).length,
+                    };
+                    
+                    await repo.save(avatarName, userId, characterData);
+                }
+            }
+        } catch (repoError) {
+            // Repository 저장 실패는 경고만 (파일시스템은 이미 저장됨)
+            console.warn('[Characters] Failed to save to repository (non-critical):', repoError);
+        }
+
+        return response.send(avatarName);
     } catch (err) {
         console.error(err);
         response.sendStatus(500);
@@ -1114,6 +1153,7 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
     let targetFile = (request.body.avatar_url).replace('.png', '');
 
     try {
+        // 1. 파일시스템에 저장 (기존 방식)
         if (!request.file) {
             const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
             await writeCharacterData(avatarPath, char, targetFile, request);
@@ -1126,6 +1166,44 @@ router.post('/edit', validateAvatarUrlMiddleware, async function (request, respo
 
             // Bust cache to reload the new avatar
             cacheBuster.bust(request, response);
+        }
+
+        // 2. Repository를 사용해서 DB에도 저장 (하이브리드 모드)
+        try {
+            const userId = request.user.profile.handle;
+            const repo = getCharacterRepository();
+            console.log('[Characters] Saving to repository:', { userId, avatarUrl: request.body.avatar_url, repoType: repo.constructor.name });
+            
+            // 파일에서 읽어서 Repository 형식으로 변환
+            const avatarPath = path.join(request.user.directories.characters, request.body.avatar_url);
+            if (fs.existsSync(avatarPath)) {
+                const imgData = await readCharacterData(avatarPath);
+                if (imgData) {
+                    const jsonObject = JSON.parse(imgData);
+                    const charStat = fs.statSync(avatarPath);
+                    const chatsDirectory = path.join(request.user.directories.chats, targetFile);
+                    const { chatSize, dateLastChat } = calculateChatSize(chatsDirectory);
+                    
+                    const characterData = {
+                        id: request.body.avatar_url,
+                        userId: userId,
+                        characterName: jsonObject.data?.name || jsonObject.name || targetFile,
+                        characterData: jsonObject,
+                        avatar: request.body.avatar_url,
+                        jsonData: imgData,
+                        dateAdded: Math.floor(charStat.ctimeMs), // 정수로 변환 (BIGINT용)
+                        createDate: jsonObject.create_date || new Date(charStat.ctimeMs).toISOString(),
+                        chatSize: chatSize || 0,
+                        dateLastChat: dateLastChat ? Math.floor(dateLastChat) : undefined, // 정수로 변환
+                        dataSize: JSON.stringify(jsonObject).length,
+                    };
+                    
+                    await repo.save(request.body.avatar_url, userId, characterData);
+                }
+            }
+        } catch (repoError) {
+            // Repository 저장 실패는 경고만 (파일시스템은 이미 저장됨)
+            console.warn('[Characters] Failed to save to repository (non-critical):', repoError);
         }
 
         return response.sendStatus(200);
@@ -1288,9 +1366,28 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         return response.sendStatus(400);
     }
 
+    // 1. 파일시스템에서 삭제 (기존 방식)
     fs.unlinkSync(avatarPath);
     invalidateThumbnail(request.user.directories, 'avatar', request.body.avatar_url);
     let dir_name = (request.body.avatar_url.replace('.png', ''));
+
+    // 2. Repository를 사용해서 DB에서도 삭제 (하이브리드 모드)
+    try {
+        const userId = request.user.profile.handle;
+        const repo = getCharacterRepository();
+        console.log('[Characters] Deleting from repository:', { userId, avatarUrl: request.body.avatar_url });
+        await repo.delete(request.body.avatar_url, userId);
+        console.log('[Characters] Successfully deleted from repository');
+    } catch (repoError) {
+        // Repository 삭제 실패는 경고만 (파일시스템은 이미 삭제됨)
+        console.warn('[Characters] Failed to delete from repository (non-critical):', repoError);
+        console.warn('[Characters] Error details:', {
+            message: repoError.message,
+            stack: repoError.stack,
+            userId: request.user.profile.handle,
+            avatarUrl: request.body.avatar_url
+        });
+    }
 
     if (!dir_name.length) {
         console.error('Malicious dirname prevented');
@@ -1325,11 +1422,56 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
  */
 router.post('/all', async function (request, response) {
     try {
-        const files = fs.readdirSync(request.user.directories.characters);
-        const pngFiles = files.filter(file => file.endsWith('.png'));
-        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
-        const data = (await Promise.all(processingPromises)).filter(c => c.name);
-        return response.send(data);
+        // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
+        const userId = request.user.profile.handle;
+        const repo = getCharacterRepository();
+        
+        try {
+            const repoCharacters = await repo.getAll(userId, useShallowCharacters);
+            
+            // Repository 반환 형식을 기존 형식으로 변환
+            const data = repoCharacters.map(char => {
+                // Repository가 반환하는 형식: { characterName, characterData, avatar, ... }
+                // 기존 형식: { name, avatar, ... } (characterData가 이미 변환된 형식)
+                
+                if (useShallowCharacters) {
+                    // Shallow 모드: 메타데이터만
+                    return {
+                        name: char.characterName || char.characterData?.name || char.characterData?.data?.name,
+                        avatar: char.avatar,
+                        date_added: char.dateAdded,
+                        create_date: char.createDate,
+                        chat_size: char.chatSize || 0,
+                        date_last_chat: char.dateLastChat,
+                        data_size: char.dataSize || 0,
+                    };
+                } else {
+                    // Full 모드: characterData를 기존 형식으로 변환
+                    const charData = char.characterData || {};
+                    return {
+                        ...charData,
+                        name: char.characterName || charData.name || charData.data?.name,
+                        avatar: char.avatar,
+                        json_data: char.jsonData,
+                        date_added: char.dateAdded,
+                        create_date: char.createDate,
+                        chat_size: char.chatSize || 0,
+                        date_last_chat: char.dateLastChat,
+                        data_size: char.dataSize || 0,
+                    };
+                }
+            }).filter(c => c.name); // name이 있는 것만 필터링
+            
+            return response.send(data);
+        } catch (repoError) {
+            // Repository 실패 시 기존 방식으로 폴백 (안전장치)
+            console.warn('[Characters] Repository failed, falling back to filesystem:', repoError);
+            const files = fs.readdirSync(request.user.directories.characters);
+            const pngFiles = files.filter(file => file.endsWith('.png'));
+            const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
+            const data = (await Promise.all(processingPromises)).filter(c => c.name);
+            return response.send(data);
+        }
     } catch (err) {
         console.error(err);
         const isRangeError = err instanceof RangeError;
@@ -1341,15 +1483,45 @@ router.post('/get', validateAvatarUrlMiddleware, async function (request, respon
     try {
         if (!request.body) return response.sendStatus(400);
         const item = request.body.avatar_url;
-        const filePath = path.join(request.user.directories.characters, item);
+        
+        // Repository Pattern 사용 (설정에 따라 파일시스템 또는 PostgreSQL)
+        const userId = request.user.profile.handle;
+        const repo = getCharacterRepository();
+        
+        try {
+            const char = await repo.get(item, userId);
+            
+            if (!char) {
+                return response.sendStatus(404);
+            }
+            
+            // Repository 반환 형식을 기존 형식으로 변환
+            const charData = char.characterData || {};
+            const data = {
+                ...charData,
+                name: char.characterName || charData.name || charData.data?.name,
+                avatar: char.avatar,
+                json_data: char.jsonData,
+                date_added: char.dateAdded,
+                create_date: char.createDate,
+                chat_size: char.chatSize || 0,
+                date_last_chat: char.dateLastChat,
+                data_size: char.dataSize || 0,
+            };
+            
+            return response.send(data);
+        } catch (repoError) {
+            // Repository 실패 시 기존 방식으로 폴백 (안전장치)
+            console.warn('[Characters] Repository failed, falling back to filesystem:', repoError);
+            const filePath = path.join(request.user.directories.characters, item);
 
-        if (!fs.existsSync(filePath)) {
-            return response.sendStatus(404);
+            if (!fs.existsSync(filePath)) {
+                return response.sendStatus(404);
+            }
+
+            const data = await processCharacter(item, request.user.directories, { shallow: false });
+            return response.send(data);
         }
-
-        const data = await processCharacter(item, request.user.directories, { shallow: false });
-
-        return response.send(data);
     } catch (err) {
         console.error(err);
         response.sendStatus(500);
