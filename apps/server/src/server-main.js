@@ -62,7 +62,6 @@ import { ensureThumbnailCache } from './endpoints/thumbnails.js';
 
 // Routers
 import { router as usersPublicRouter } from './endpoints/users-public.js';
-import { init as statsInit, onExit as statsOnExit } from './endpoints/stats.js';
 import { checkForNewContent } from './endpoints/content-manager.js';
 import { init as settingsInit } from './endpoints/settings.js';
 import { redirectDeprecatedEndpoints, ServerStartup, setupPrivateEndpoints } from './server-startup.js';
@@ -275,7 +274,6 @@ async function preSetupTasks() {
     migrateAccessLog();
 
     await settingsInit();
-    await statsInit();
 
     const pluginsDirectory = path.join(serverDirectory, 'plugins');
     const cleanupPlugins = await loadPlugins(app, pluginsDirectory);
@@ -285,7 +283,6 @@ async function preSetupTasks() {
     const exitProcess = async () => {
         if (isExiting) return;
         isExiting = true;
-        await statsOnExit();
         if (typeof cleanupPlugins === 'function') {
             await cleanupPlugins();
         }

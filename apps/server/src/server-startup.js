@@ -27,7 +27,6 @@ import { router as charactersRouter } from './endpoints/characters.js';
 import { router as chatsRouter } from './endpoints/chats.js';
 import { router as groupsRouter } from './endpoints/groups.js';
 import { router as worldInfoRouter } from './endpoints/worldinfo.js';
-import { router as statsRouter } from './endpoints/stats.js';
 import { router as contentManagerRouter } from './endpoints/content-manager.js';
 import { router as settingsRouter } from './endpoints/settings.js';
 import { router as backgroundsRouter } from './endpoints/backgrounds.js';
@@ -106,9 +105,6 @@ export function redirectDeprecatedEndpoints(app) {
     redirect('/deleteworldinfo', '/api/worldinfo/delete');
     redirect('/importworldinfo', '/api/worldinfo/import');
     redirect('/editworldinfo', '/api/worldinfo/edit');
-    redirect('/getstats', '/api/stats/get');
-    redirect('/recreatestats', '/api/stats/recreate');
-    redirect('/updatestats', '/api/stats/update');
     redirect('/getbackgrounds', '/api/backgrounds/all');
     redirect('/delbackground', '/api/backgrounds/delete');
     redirect('/renamebackground', '/api/backgrounds/rename');
@@ -156,7 +152,6 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/chats', chatsRouter);
     app.use('/api/groups', groupsRouter);
     app.use('/api/worldinfo', worldInfoRouter);
-    app.use('/api/stats', statsRouter);
     app.use('/api/backgrounds', backgroundsRouter);
     app.use('/api/sprites', spritesRouter);
     app.use('/api/content', contentManagerRouter);
