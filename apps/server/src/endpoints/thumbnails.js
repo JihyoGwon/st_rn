@@ -10,7 +10,7 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { getConfigValue, invalidateFirefoxCache } from '../util.js';
 import { getCharacterRepository } from '../repositories/factory.js';
-import { getUserDirectories } from '../users.js';
+import { getUserDirectories, getGlobalDirectories } from '../users.js';
 
 const thumbnailsEnabled = !!getConfigValue('thumbnails.enabled', true, 'boolean');
 const quality = Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.quality', 95, 'number'))));
@@ -76,6 +76,33 @@ function getOriginalFolder(directories, type) {
 }
 
 /**
+ * Finds the original file path for avatar type.
+ * 캐릭터는 사용자별 디렉토리에 저장되며, is_shared인 경우 다른 사용자도 접근 가능.
+ * @param {string} file File name
+ * @param {string} userHandle User handle (for checking user-specific directory)
+ * @param {string} [ownerHandle] Owner handle (for shared characters)
+ * @returns {string|null} Path to the original file, or null if not found
+ */
+function findAvatarOriginalPath(file, userHandle, ownerHandle = null) {
+    // 캐릭터는 사용자별 디렉토리에 저장됨
+    // 1. 현재 사용자 디렉토리 확인
+    const userPath = path.join(globalThis.DATA_ROOT, userHandle, 'characters', file);
+    if (fs.existsSync(userPath)) {
+        return userPath;
+    }
+    
+    // 2. 공용 캐릭터인 경우 소유자 디렉토리 확인
+    if (ownerHandle && ownerHandle !== userHandle) {
+        const ownerPath = path.join(globalThis.DATA_ROOT, ownerHandle, 'characters', file);
+        if (fs.existsSync(ownerPath)) {
+            return ownerPath;
+        }
+    }
+    
+    return null;
+}
+
+/**
  * Removes the generated thumbnail from the disk.
  * @param {import('../users.js').UserDirectoryList} directories User directories
  * @param {ThumbnailType} type Type of the thumbnail
@@ -90,6 +117,70 @@ export function invalidateThumbnail(directories, type, file) {
     if (fs.existsSync(pathToThumbnail)) {
         fs.unlinkSync(pathToThumbnail);
     }
+}
+
+/**
+ * Generates a thumbnail from a specific file path.
+ * @param {string} originalFilePath Full path to the original file
+ * @param {import('../users.js').UserDirectoryList} directories User directories (for thumbnail folder)
+ * @param {ThumbnailType} type Type of the thumbnail
+ * @param {string} file Name of the file
+ * @returns {Promise<string|null>} Path to cached thumbnail or null
+ */
+async function generateThumbnailFromPath(originalFilePath, directories, type, file) {
+    let thumbnailFolder = getThumbnailFolder(directories, type);
+    if (thumbnailFolder === undefined) throw new Error('Invalid thumbnail type');
+    const pathToCachedFile = path.join(thumbnailFolder, file);
+    
+    const cachedFileExists = fs.existsSync(pathToCachedFile);
+    const originalFileExists = fs.existsSync(originalFilePath);
+
+    // to handle cases when original image was updated after thumb creation
+    let shouldRegenerate = false;
+
+    if (cachedFileExists && originalFileExists) {
+        const originalStat = fs.statSync(originalFilePath);
+        const cachedStat = fs.statSync(pathToCachedFile);
+
+        if (originalStat.mtimeMs > cachedStat.ctimeMs) {
+            shouldRegenerate = true;
+        }
+    }
+
+    if (cachedFileExists && !shouldRegenerate) {
+        return pathToCachedFile;
+    }
+
+    if (!originalFileExists) {
+        return null;
+    }
+
+    try {
+        let buffer;
+
+        try {
+            const size = dimensions[type];
+            const fileBuffer = await fsPromises.readFile(originalFilePath);
+            const image = await Jimp.fromBuffer(fileBuffer);
+            const width = !isNaN(size?.[0]) && size?.[0] > 0 ? size[0] : image.bitmap.width;
+            const height = !isNaN(size?.[1]) && size?.[1] > 0 ? size[1] : image.bitmap.height;
+            image.cover({ w: width, h: height });
+            buffer = pngFormat
+                ? await image.getBuffer(JimpMime.png)
+                : await image.getBuffer(JimpMime.jpeg, { quality: quality, jpegColorSpace: 'ycbcr' });
+        }
+        catch (inner) {
+            console.warn(`Thumbnailer can not process the image: ${originalFilePath}. Using original size`, inner);
+            buffer = fs.readFileSync(originalFilePath);
+        }
+
+        writeFileAtomicSync(pathToCachedFile, buffer);
+    }
+    catch (outer) {
+        return null;
+    }
+
+    return pathToCachedFile;
 }
 
 /**
@@ -214,36 +305,39 @@ router.get('/', async function (request, response) {
         }
 
         if (!thumbnailsEnabled) {
-            let folder = getOriginalFolder(request.user.directories, type);
+            let pathToOriginalFile;
 
-            if (folder === undefined) {
-                return response.sendStatus(400);
-            }
-
-            // 아바타 타입이고 파일이 현재 사용자 디렉토리에 없으면 공용 캐릭터인지 확인
             if (type === 'avatar') {
-                const pathToOriginalFile = path.join(folder, file);
-                if (!fs.existsSync(pathToOriginalFile)) {
-                    // Repository를 사용해서 공용 캐릭터인지 확인
-                    try {
-                        const userId = request.user.profile.handle;
-                        const repo = getCharacterRepository();
-                        const character = await repo.get(file, userId);
-                        
-                        if (character && character.userId !== userId) {
-                            // 공용 캐릭터인 경우, 소유자의 디렉토리에서 찾기
-                            const ownerDirectories = getUserDirectories(character.userId);
-                            folder = getOriginalFolder(ownerDirectories, type);
-                        }
-                    } catch (error) {
-                        // Repository 실패 시 현재 사용자 디렉토리만 사용
-                        console.warn('[Thumbnails] Failed to check shared character:', error);
+                // 아바타 타입: 사용자별 디렉토리 확인 (캐릭터는 사용자별 저장)
+                const userId = request.user.profile.handle;
+                
+                // 먼저 DB에서 캐릭터 정보 확인 (공용 캐릭터인지 확인)
+                let ownerHandle = null;
+                try {
+                    const repo = getCharacterRepository();
+                    const character = await repo.get(file, userId);
+                    
+                    if (character) {
+                        // 캐릭터 소유자 확인
+                        ownerHandle = character.userId;
                     }
+                } catch (error) {
+                    // Repository 실패 시 현재 사용자로 가정
+                    console.warn('[Thumbnails] Failed to check character owner:', error);
                 }
+                
+                // 소유자 디렉토리에서 찾기 (현재 사용자 또는 공용 캐릭터 소유자)
+                pathToOriginalFile = findAvatarOriginalPath(file, userId, ownerHandle);
+            } else {
+                // 다른 타입: 기존 방식 유지
+                const folder = getOriginalFolder(request.user.directories, type);
+                if (folder === undefined) {
+                    return response.sendStatus(400);
+                }
+                pathToOriginalFile = path.join(folder, file);
             }
 
-            const pathToOriginalFile = path.join(folder, file);
-            if (!fs.existsSync(pathToOriginalFile)) {
+            if (!pathToOriginalFile || !fs.existsSync(pathToOriginalFile)) {
                 return response.sendStatus(404);
             }
             const contentType = mime.lookup(pathToOriginalFile) || 'image/png';
@@ -255,25 +349,44 @@ router.get('/', async function (request, response) {
             return response.send(originalFile);
         }
 
-        // 아바타 타입인 경우 공용 캐릭터 지원
+        // 아바타 타입인 경우 사용자별 디렉토리 확인
         let directories = request.user.directories;
+        let originalFilePath = null;
+        
         if (type === 'avatar') {
+            const userId = request.user.profile.handle;
+            
+            // DB에서 캐릭터 정보 확인 (공용 캐릭터인지 확인)
+            let ownerHandle = null;
             try {
-                const userId = request.user.profile.handle;
                 const repo = getCharacterRepository();
                 const character = await repo.get(file, userId);
                 
-                if (character && character.userId !== userId) {
-                    // 공용 캐릭터인 경우, 소유자의 디렉토리 사용
-                    directories = getUserDirectories(character.userId);
+                if (character) {
+                    ownerHandle = character.userId;
                 }
             } catch (error) {
-                // Repository 실패 시 현재 사용자 디렉토리만 사용
-                console.warn('[Thumbnails] Failed to check shared character:', error);
+                console.warn('[Thumbnails] Failed to check character owner:', error);
+            }
+            
+            // 소유자 디렉토리에서 원본 파일 찾기
+            originalFilePath = findAvatarOriginalPath(file, userId, ownerHandle);
+            
+            if (originalFilePath) {
+                // 썸네일은 원본 파일의 소유자 디렉토리에 저장 (일관성 유지)
+                // 원본 파일이 어느 사용자 디렉토리에 있는지 확인
+                if (ownerHandle && ownerHandle !== userId) {
+                    // 공용 캐릭터인 경우, 소유자의 디렉토리에 썸네일 저장
+                    directories = getUserDirectories(ownerHandle);
+                }
+                // 그 외의 경우는 request.user.directories 사용 (현재 사용자 디렉토리)
             }
         }
         
-        const pathToCachedFile = await generateThumbnail(directories, type, file);
+        // 원본 파일 경로가 있으면 그것을 사용, 없으면 기존 방식대로
+        const pathToCachedFile = originalFilePath 
+            ? await generateThumbnailFromPath(originalFilePath, directories, type, file)
+            : await generateThumbnail(directories, type, file);
 
         if (!pathToCachedFile) {
             return response.sendStatus(404);

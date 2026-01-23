@@ -645,10 +645,13 @@ export async function getAllUserHandles() {
 /**
  * 전역 디렉토리로 사용할 디렉토리 키 목록
  * 이 디렉토리들은 모든 사용자가 공유함 (admin/웹 UI가 관리)
+ * 
+ * 주의: 'characters'는 제외됨 - 캐릭터는 사용자별 디렉토리에 저장하고,
+ * is_shared 플래그로 공유 여부를 제어함
  */
 const GLOBAL_DIRECTORY_KEYS = [
     'worlds',
-    'characters',
+    // 'characters',  // 제거: 사용자별 디렉토리에 저장, is_shared로 공유 제어
     'backgrounds',
     'themes',
     'novelAI_Settings',
@@ -663,10 +666,10 @@ const GLOBAL_DIRECTORY_KEYS = [
     'assets',
     'sysprompt',
     'reasoning',
-    'thumbnails',
-    'thumbnailsBg',
-    'thumbnailsAvatar',
-    'thumbnailsPersona',
+    // 'thumbnails',  // 제거: 사용자별 디렉토리에 저장
+    // 'thumbnailsBg',  // 제거: 사용자별 디렉토리에 저장
+    // 'thumbnailsAvatar',  // 제거: 사용자별 디렉토리에 저장
+    // 'thumbnailsPersona',  // 제거: 사용자별 디렉토리에 저장
 ];
 
 /**
