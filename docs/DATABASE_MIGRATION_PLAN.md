@@ -313,10 +313,10 @@ CREATE INDEX idx_coaching_created_at ON coaching_sessions(created_at DESC);
   ```
 
 #### 1.2 추상화 레이어 구축
-- [ ] Repository 인터페이스 정의
-- [ ] 파일 시스템 구현체 (기존 코드 래핑)
-- [ ] 데이터베이스 구현체 (새 코드)
-- [ ] Factory 패턴으로 구현체 선택
+- [x] Repository 인터페이스 정의
+- [x] 파일 시스템 구현체 (기존 코드 래핑)
+- [x] 데이터베이스 구현체 (새 코드)
+- [x] Factory 패턴으로 구현체 선택
 
 #### 1.3 설정 관리
 - [ ] 데이터베이스 연결 설정 추가
@@ -356,9 +356,9 @@ async function migrateChats(userId: string) {
 ```
 
 #### 2.2 사용자 정보
-- [ ] `UserRepository` 구현
-- [ ] 사용자 인증 로직 수정
-- [ ] 기존 사용자 데이터 마이그레이션
+- [x] `UserRepository` 구현
+- [x] 사용자 인증 로직 수정
+- [x] 기존 사용자 데이터 마이그레이션
 
 #### 2.3 코칭 세션 데이터
 - [ ] `CoachingRepository` 구현
@@ -373,11 +373,15 @@ async function migrateChats(userId: string) {
 ### 3단계: 보조 데이터 마이그레이션 (1-2주)
 
 #### 3.1 캐릭터 메타데이터
-- [ ] 캐릭터 정보 DB 저장 (이미지는 파일 시스템 유지)
-- [ ] 캐릭터 검색 기능 개선
+- [x] 캐릭터 정보 DB 저장 (이미지는 파일 시스템 유지)
+- [x] 캐릭터 검색 기능 개선
+- [x] `is_shared` 플래그로 공유 캐릭터 지원
 
 #### 3.2 설정 및 메타데이터
-- [ ] 사용자 설정 DB 저장
+- [x] 전역 설정 디렉토리 구조 (`_global`)
+- [x] 전역 설정 파일 마이그레이션 스크립트
+- [x] API 키 등 전역 디렉토리에서 읽기/쓰기
+- [ ] 사용자 설정 DB 저장 (파일 시스템 유지)
 - [ ] API 키 등 민감 정보 암호화 저장
 
 **하이브리드 접근**:
@@ -687,11 +691,13 @@ async function migrateChats(userHandle: string) {
 - [ ] 환경 변수 설정 (DB 연결 정보)
 
 ### 구현 단계
-- [ ] 추상화 레이어 구축
-- [ ] 데이터베이스 스키마 생성
-- [ ] 핵심 Repository 구현
-- [ ] 마이그레이션 스크립트 작성
-- [ ] API 엔드포인트 수정
+- [x] 추상화 레이어 구축
+- [x] 데이터베이스 스키마 생성 (users, characters)
+- [x] 핵심 Repository 구현 (User, Character)
+- [x] 전역 설정 마이그레이션 스크립트 작성
+- [x] API 엔드포인트 수정 (characters, settings, secrets, thumbnails, chats)
+- [ ] Chat Repository 구현
+- [ ] Chat 마이그레이션 스크립트 작성
 
 ### 검증 단계
 - [ ] 단위 테스트 작성
@@ -724,6 +730,102 @@ async function migrateChats(userHandle: string) {
 
 ---
 
+## ✅ 진행 상황 (2024년)
+
+### 완료된 작업
+
+#### 1. 전역 디렉토리 구조 및 마이그레이션
+- ✅ 전역 디렉토리(`_global`) 구조 생성
+- ✅ `getUserDirectories()` 함수 수정 - 전역 디렉토리 매핑 로직 구현
+- ✅ 전역 설정 마이그레이션 스크립트 작성 (`apps/server/scripts/migrate-to-global-settings.js`)
+- ✅ `getGlobalSettingsPath()`, `getGlobalDirectories()` 함수 추가
+- ✅ 전역 디렉토리로 공유되는 리소스:
+  - `settings.json` (전역 설정)
+  - `secrets.json` (API 키 등)
+  - `worlds`, `backgrounds`, `themes` 등 (전역 리소스)
+
+#### 2. Repository 패턴 구현
+- ✅ `UserRepository` 구현 (FileSystem, PostgreSQL, Hybrid)
+- ✅ `CharacterRepository` 구현 (FileSystem, PostgreSQL, Hybrid)
+- ✅ Repository Factory 패턴 구현 (`apps/server/src/repositories/factory.js`)
+- ✅ 하이브리드 모드 지원 (파일 시스템 + PostgreSQL 병행)
+
+#### 3. PostgreSQL 스키마 및 마이그레이션
+- ✅ `users` 테이블 생성 및 마이그레이션
+- ✅ `characters` 테이블 생성 및 마이그레이션
+- ✅ `is_shared` 컬럼 추가 (캐릭터 공유 기능)
+- ✅ 인덱스 최적화 (사용자 ID, 공유 캐릭터 등)
+
+#### 4. 캐릭터 관리 구조 개선
+- ✅ 캐릭터는 사용자별 디렉토리에 저장 (`data/{userHandle}/characters/`)
+- ✅ `is_shared` 플래그로 캐릭터 공유 제어 (DB 기반)
+- ✅ 공용 캐릭터 접근 로직 구현 (Repository 패턴 사용)
+- ✅ 썸네일도 사용자별 디렉토리에 저장 (일관성 유지)
+
+#### 5. API 엔드포인트 수정
+- ✅ `chats.js`: Repository 패턴 사용, 전역 설정 경로 적용
+- ✅ `characters.js`: Repository 패턴 사용, 하이브리드 모드 지원
+- ✅ `thumbnails.js`: 사용자별 디렉토리 확인 로직 구현
+- ✅ `secrets.js`: 전역 디렉토리에서 API 키 읽기/쓰기
+- ✅ `settings.js`: 전역 설정 파일 사용
+
+#### 6. 전역 디렉토리 매핑 정리
+- ✅ `GLOBAL_DIRECTORY_KEYS`에서 `characters` 제거 (사용자별 저장)
+- ✅ `GLOBAL_DIRECTORY_KEYS`에서 `thumbnails` 관련 항목 제거 (사용자별 저장)
+- ✅ 전역 디렉토리는 설정 및 공유 리소스만 포함
+
+### 현재 구조
+
+```
+data/
+├── _global/                    # 전역 공유 디렉토리
+│   ├── settings.json          # 전역 설정
+│   ├── secrets.json           # API 키 등
+│   ├── worlds/                # 전역 공유
+│   ├── backgrounds/           # 전역 공유
+│   └── themes/                # 전역 공유
+│
+└── {userHandle}/              # 사용자별 디렉토리
+    ├── characters/            # 사용자별 캐릭터 (is_shared로 공유 제어)
+    ├── thumbnails/            # 사용자별 썸네일
+    ├── chats/                 # 사용자별 채팅
+    └── ...
+```
+
+### 핵심 설계 결정
+
+1. **캐릭터 저장 방식**
+   - 사용자별 디렉토리에 저장 (`data/{userHandle}/characters/`)
+   - DB의 `is_shared` 플래그로 공유 제어
+   - 전역 디렉토리 사용 안 함
+
+2. **썸네일 저장 방식**
+   - 사용자별 디렉토리에 저장 (`data/{userHandle}/thumbnails/`)
+   - 원본 파일과 동일한 사용자 디렉토리에 저장 (일관성)
+
+3. **전역 디렉토리 용도**
+   - 설정 파일 (`settings.json`, `secrets.json`)
+   - 공유 리소스 (`worlds`, `backgrounds`, `themes` 등)
+   - 캐릭터 및 썸네일은 제외
+
+### 진행 중인 작업
+
+- [ ] Chat 마이그레이션 (Repository 패턴 구현 필요)
+- [ ] 기존 파일 시스템 데이터의 DB 마이그레이션 스크립트
+- [ ] 성능 최적화 및 모니터링
+
+### 알려진 이슈
+
+1. **하위 호환성**
+   - 기존 사용자별 디렉토리에 있는 파일들은 계속 읽을 수 있음
+   - 점진적 마이그레이션 가능
+
+2. **캐릭터 이미지 경로**
+   - `thumbnails.js`에서 사용자별 디렉토리와 소유자 디렉토리 모두 확인
+   - 공용 캐릭터의 경우 소유자 디렉토리에서 파일 읽기
+
+---
+
 **작성일**: 2024년
 **최종 수정**: 2024년
-**상태**: 계획 단계
+**상태**: 진행 중 (1단계 완료, 2단계 진행 중)
