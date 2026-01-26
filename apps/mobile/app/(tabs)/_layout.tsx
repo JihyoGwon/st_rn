@@ -30,6 +30,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="character"
+        options={{
+          title: '캐릭터',
+          tabBarIcon: ({ color, size = 24 }) => (
+            <MaterialIcons name="face" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="chat"
         options={{
           title: '채팅',
