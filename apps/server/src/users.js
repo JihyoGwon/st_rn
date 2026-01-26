@@ -870,7 +870,16 @@ export async function setUserDataMiddleware(request, response, next) {
     // If user accounts are enabled, get the user from the session
     let handle = request.session?.handle;
 
-    // If we have the only user and it's not password protected, use it
+    // If no handle in session, try auto-login (for API requests from mobile app)
+    if (!handle) {
+        const { basicAuthMode } = globalThis.COMMAND_LINE_ARGS || {};
+        const autoLoginSuccess = await tryAutoLogin(request, basicAuthMode);
+        if (autoLoginSuccess) {
+            handle = request.session?.handle;
+        }
+    }
+
+    // If we still don't have a handle, continue without user (will be blocked by requireLoginMiddleware)
     if (!handle) {
         return next();
     }
